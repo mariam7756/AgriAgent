@@ -1,5 +1,6 @@
-# mini-rag-app
-Thid is application of the RAG model to help Agricultural companies to question answering  
+# AgriAgent
+An end-to-end implementation of a Retrieval-Augmented Generation (RAG) system that enables agricultural companies to deploy intelligent AI agents capable of answering domain-specific queries using proprietary knowledge sources.
+ 
 
 # requirments 
 python 3.8 or later 
