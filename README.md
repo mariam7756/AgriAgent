@@ -31,4 +31,10 @@ $ pip install -r reqirements.txt
 ```bash
 $ cp .env.example .env
 ```
- set your  environment varriables in the `.env` file like `OPEN_API_KEY` value
+ set your  environment varriables in the `.env` file like `OPEN_API_KEY` value  
+  
+
+ ## Run the FastApi server 
+ ```bash
+ uvicorn main:app --reload --host 0.0.0.0 --port 5000
+ ```
