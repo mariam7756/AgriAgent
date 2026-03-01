@@ -6,6 +6,7 @@ from controllers.ProjectController import ProjectController
 import aiofiles
 from models import ResponseSignal
 import logging
+import os
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -44,6 +45,9 @@ async def upload_data(
         project_path=project_dir_path
     )
 
+    # Define file_id using the generated file name
+    file_id = os.path.basename(file_path)
+
     try:
         async with aiofiles.open(file_path, "wb") as f:
             while chunk := await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
@@ -59,9 +63,11 @@ async def upload_data(
             }
         )
 
+    # Success response
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={
-            "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value
+            "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value,
+            "file_id": file_id
         }
     )
