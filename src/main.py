@@ -1,13 +1,8 @@
-
-from fastapi import FastAPI 
-from dotenv import load_dotenv
-load_dotenv()
-
-from routes import base
+from fastapi import FastAPI
+from routes import base, data
 
 
-app=FastAPI()
+app = FastAPI()
 
 app.include_router(base.base_router)
-
-
+app.include_router(data.data_router)

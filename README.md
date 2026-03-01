@@ -37,4 +37,8 @@ $ cp .env.example .env
  ## Run the FastApi server 
  ```bash
  uvicorn main:app --reload --host 0.0.0.0 --port 5000
- ```
+ ``` 
+ ```bash
+ uvicorn src.main:app --reload --host 0.0.0.0 --port 5000
+ ``` 
+ 
