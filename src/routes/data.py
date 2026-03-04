@@ -38,13 +38,13 @@ async def upload_data(
     project_dir_path = project_controller.get_project_path(
         project_id=project_id
     )
-
-    # Generate unique file path
-    file_path = data_controller.generate_unique_filename(
-        orig_file_name=file.filename,
-        project_path=project_dir_path
+      # Generate unique file path
+    file_path, file_id = data_controller.generate_unique_filePath(
+    orig_file_name=file.filename,
+    project_path=project_dir_path
     )
 
+  
     # Define file_id using the generated file name
     file_id = os.path.basename(file_path)
 
@@ -59,7 +59,8 @@ async def upload_data(
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
-                "signal": ResponseSignal.FILE_UPLOAD_FAILED.value
+                "signal": ResponseSignal.FILE_UPLOAD_FAILED.value,
+                "file_id":file_id
             }
         )
 
