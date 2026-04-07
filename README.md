@@ -24,7 +24,7 @@ export PS1="\[\033[01;32m\]\u@\h:\w\n\[\033[00m\]\$"
 
 ## install require packages
 ```bash 
-$ pip install -r reqirements.txt
+$ pip install -r requirements.txt
 ```
 
 ## setup invironment variables
@@ -33,12 +33,24 @@ $ cp .env.example .env
 ```
  set your  environment varriables in the `.env` file like `OPEN_API_KEY` value  
   
+  ## Docker Compose Services
+  ```bash
+  $ cd docker
+  $ cp .env.example .env
+  ```
+  - update  ` .env` with your credintals
 
  ## Run the FastApi server 
  ```bash
  uvicorn main:app --reload --host 0.0.0.0 --port 5000
  ``` 
- ```bash
- uvicorn src.main:app --reload --host 0.0.0.0 --port 5000
- ``` 
+
+
+ ####  https://lnkd.in/dPkAN5pR   دي اكستنشن بتقلل الtokens###   
+
+ ##  git branch     ##
+ ### git add .    ###
+ ### git commit -m ""  ###
+ ### git push -u origin ###
+ 
  
