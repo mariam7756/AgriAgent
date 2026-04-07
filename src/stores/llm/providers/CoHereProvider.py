@@ -88,3 +88,4 @@ class CoHereProvider(LLMInterface):
             "text":self.process_text(prompt)
         }
              
+             
