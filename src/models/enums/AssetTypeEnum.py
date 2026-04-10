@@ -4,3 +4,4 @@ class AssetTypeEnum(Enum):
 
     FILE = "file"
     
+    

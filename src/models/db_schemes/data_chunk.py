@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from bson.objectid import ObjectId
 
+
 class DataChunk(BaseModel):
     
     id: Optional[ObjectId] = Field(None, alias="_id")
@@ -29,5 +30,4 @@ class DataChunk(BaseModel):
     
 class RetrievedDocument(BaseModel):
     text: str
-    score: float 
-    
+    score: float

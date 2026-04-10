@@ -1,5 +1,4 @@
-from enum import Enum   
-
+from enum import Enum
 
 class LLMEnums(Enum):
     OPENAI = "OPENAI"
@@ -7,7 +6,7 @@ class LLMEnums(Enum):
     
 
 class OpenAIEnums(Enum):
-    SYSTEM ="system"
+    SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
     
@@ -16,13 +15,13 @@ class CoHereEnums(Enum):
     
     SYSTEM = "SYSTEM"
     USER = "USER"
-    ASSISTANT = " CHATBOT"
-    
-    DOCUMENT ="search_document"
-    QUERY ="search_query"
-    
-    
+    ASSISTANT = "CHATBOT"
+
+    DOCUMENT = "search_document"
+    QUERY = "search_query"
+
+
 class DocumentTypeEnum(Enum):
     DOCUMENT = "document"
-    QUERY ="query"
+    QUERY = "query"
     

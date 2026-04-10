@@ -1,9 +1,7 @@
 from .BaseController import BaseController
 from .ProjectController import ProjectController
 from fastapi import UploadFile
-from models import ResponseSignal
-from models.enums.ResponseEnums import ResponseSignal
-
+from models import ResponseSignal  
 import re
 import os
 
@@ -55,3 +53,4 @@ class DataController(BaseController):
         cleaned_file_name = cleaned_file_name.replace(" ", "_")
 
         return cleaned_file_name
+
