@@ -47,7 +47,7 @@ class ProcessController(BaseController):
         return None
 
     def process_file_content(self, file_content: list, file_id: str,
-                            chunk_size: int=100, overlap_size: int=20):
+                         chunk_size: int = 1000, overlap_size: int = 200):
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
@@ -55,22 +55,15 @@ class ProcessController(BaseController):
             length_function=len,
         )
 
-        file_content_texts = [
-            rec.page_content
-            for rec in file_content
-        ]
+    
+        chunks = text_splitter.split_documents(file_content)
 
-        file_content_metadata = [
-            rec.metadata
-            for rec in file_content
-        ]
-
-        chunks = text_splitter.create_documents(
-            file_content_texts,
-            metadatas=file_content_metadata
-        )
+        print("CHUNKS COUNT:", len(chunks))
+    
+        for i, c in enumerate(chunks[:3]):
+            
+            print(f"CHUNK {i}:", c.page_content[:200])
 
         return chunks
-
-
+    
     

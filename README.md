@@ -54,3 +54,6 @@ $ cp .env.example .env
  ### git push -u origin ###
  
  
+## qwen2.5:3b-instruct-q3_K_S
+## wp ollama run  qwen2.5:3b-instruct-q3_K_S##
+

@@ -15,6 +15,10 @@ class VectorDBProviderFactory:
                 db_path=db_path,
                 distance_method=self.config.VECTOR_DB_DISTANCE_METHOD,
             )
+            
+            provider.connect()   
+            
+        return provider
         
-        return None
+       
     
