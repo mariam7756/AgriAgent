@@ -31,7 +31,7 @@ class NLPController(BaseController):
         return self.vectordb_client.delete_collection(collection_name)
 
     
-    # COLLECTION INFO (FIXED SAFE)
+    # COLLECTION INFO 
     
     def get_vector_db_collection_info(self, project: Project):
         collection_name = self.create_collection_name(project.project_id)
@@ -103,7 +103,7 @@ class NLPController(BaseController):
         )
 
         if not vector:
-            print("EMPTY VECTOR")
+            print(" EMPTY VECTOR")
             return []
 
         results = self.vectordb_client.search_by_vector(
