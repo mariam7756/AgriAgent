@@ -14,53 +14,65 @@ class QdrantDBProvider(VectorDBInterface):
 
         self.client = None
         self.db_path = db_path
-        
 
-        if distance_method == DistanceMethodEnums.COSINE.value:
-            self.distance_method = models.Distance.COSINE
-        elif distance_method == DistanceMethodEnums.DOT.value:
+        self.distance_method = models.Distance.COSINE
+
+        if distance_method == DistanceMethodEnums.DOT.value:
             self.distance_method = models.Distance.DOT
-        else:
-            self.distance_method = models.Distance.COSINE
+
 
         self.logger = logging.getLogger(__name__)
 
+    
     # CONNECT
+    
+
     def connect(self):
-        print(" Connecting to Qdrant...")
+        
         self.client = QdrantClient(path=self.db_path)
-        print(" Connected")
+
 
     def disconnect(self):
         self.client = None
 
-    #  COLLECTION 
+    
+    # COLLECTION
+    
+
     def is_collection_existed(self, collection_name: str) -> bool:
         return self.client.collection_exists(collection_name)
 
-    def list_all_collections(self) -> List:
+    def list_all_collections(self):
         return self.client.get_collections()
 
     def get_collection_info(self, collection_name: str):
         try:
             return self.client.get_collection(collection_name)
+
         except Exception as e:
-            self.logger.error(f"Get collection error: {e}")
+            self.logger.error(f"Collection info error: {e}")
             return None
 
     def delete_collection(self, collection_name: str):
+
         if self.is_collection_existed(collection_name):
             self.client.delete_collection(collection_name)
             return True
+
         return False
 
-    def create_collection(self, collection_name: str, embedding_size: int, do_reset: bool = False):
+    def create_collection(
+        self,
+        collection_name: str,
+        embedding_size: int,
+        do_reset: bool = False
+    ):
 
         if do_reset:
             self.delete_collection(collection_name)
 
         if not self.is_collection_existed(collection_name):
-            print(f"Creating collection: {collection_name}")
+
 
             self.client.create_collection(
                 collection_name=collection_name,
@@ -70,15 +82,22 @@ class QdrantDBProvider(VectorDBInterface):
                 )
             )
 
-            print(" Collection created")
+
             return True
 
         return False
 
     
-    def insert_one(self, collection_name: str, text: str,
-                   vector: list, metadata: dict = None,
-                   record_id: str = None):
+    # INSERT ONE
+    
+    def insert_one(
+        self,
+        collection_name: str,
+        text: str,
+        vector: list,
+        metadata: dict = None,
+        record_id: str = None
+    ):
 
         try:
             self.client.upsert(
@@ -94,23 +113,25 @@ class QdrantDBProvider(VectorDBInterface):
                     )
                 ]
             )
+
             return True
 
         except Exception as e:
             self.logger.error(f"Insert one error: {e}")
             return False
 
-    #  INSERT MANY 
-    def insert_many(self, collection_name: str,
-                    texts: list,
-                    vectors: list,
-                    metadata: list = None,
-                    record_ids: list = None,
-                    batch_size: int = 50):
-
-        if not self.is_collection_existed(collection_name):
-            print(" Collection not found")
-            return False
+    
+    # INSERT MANY
+    
+    def insert_many(
+        self,
+        collection_name: str,
+        texts: list,
+        vectors: list,
+        metadata: list = None,
+        record_ids: list = None,
+        batch_size: int = 50
+    ):
 
         if metadata is None:
             metadata = [None] * len(texts)
@@ -118,40 +139,28 @@ class QdrantDBProvider(VectorDBInterface):
         if record_ids is None:
             record_ids = list(range(len(texts)))
 
-        total = len(texts)
-        print(f"INSERTING {total} ITEMS INTO {collection_name}")
+        for i in range(0, len(texts), batch_size):
 
-        for i in range(0, total, batch_size):
-
-            batch_texts = texts[i:i + batch_size]
-            batch_vectors = vectors[i:i + batch_size]
-            batch_metadata = metadata[i:i + batch_size]
-            batch_ids = record_ids[i:i + batch_size]
-
-            points = []
-
-            for x in range(len(batch_texts)):
-                points.append(
-                    PointStruct(
-                        id=int(batch_ids[x]),
-                        vector=batch_vectors[x],
-                        payload={
-                            "text": batch_texts[x],
-                            "metadata": batch_metadata[x]
-                        }
-                    )
+            points = [
+                PointStruct(
+                    id=int(record_ids[x]),
+                    vector=vectors[i:i+batch_size][x],
+                    payload={
+                        "text": texts[i:i+batch_size][x],
+                        "metadata": metadata[i:i+batch_size][x]
+                    }
                 )
-                
+                for x in range(len(texts[i:i+batch_size]))
+            ]
 
             try:
-                print(f" Upload batch {i} -> {i + len(points)}")
-
+                
                 self.client.upsert(
                     collection_name=collection_name,
                     points=points
                 )
 
-                print("Batch success")
+
 
             except Exception as e:
                 self.logger.error(f"Insert error: {e}")
@@ -159,36 +168,47 @@ class QdrantDBProvider(VectorDBInterface):
 
         return True
 
-    # SEARCH 
-    def search_by_vector(self, collection_name: str,
-                         vector: list,
-                         limit: int = 5):
+
+    # SEARCH
+    
+    def search_by_vector(
+        self,
+        collection_name: str,
+        vector: list,
+        limit: int = 5
+    ):
 
         try:
-            print("🔎 Searching...")
-
+            
             results = self.client.query_points(
                 collection_name=collection_name,
                 query=vector,
                 limit=limit,
                 with_payload=True
             )
-
+            
             points = results.points
 
             if not points:
-                print(" NO RESULTS")
+                
                 return []
+            retrieved_docs = []
+            for p in points:
+                if isinstance(p, tuple):
+                    point = p[1]
+                else:
+                    point = p
+                    
 
-            return [
-                RetrievedDocument(
-                    score=p.score,
-                    text=p.payload.get("text")
+                retrieved_docs.append(
+                    RetrievedDocument(
+                        score=getattr(point, "score", 0.0),
+                        text=point.payload.get("text", "")
+                    )
                 )
-                for p in points
-            ]
-
+                        
+            return retrieved_docs
         except Exception as e:
             self.logger.error(f"Search error: {e}")
             return []
-        
+            
