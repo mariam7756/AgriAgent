@@ -57,3 +57,6 @@ $ cp .env.example .env
 ## qwen2.5:3b-instruct-q3_K_S
 ## wp ollama run  qwen2.5:3b-instruct-q3_K_S##
 
+## COHERE_API_KEY=REMOVED ##
+   
+### 
