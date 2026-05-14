@@ -46,17 +46,4 @@ $ cp .env.example .env
  ``` 
 
 
- ####  https://lnkd.in/dPkAN5pR   دي اكستنشن بتقلل الtokens###   
 
- ##  git branch     ##
- ### git add .    ###
- ### git commit -m ""  ###
- ### git push -u origin ###
- 
- 
-## qwen2.5:3b-instruct-q3_K_S
-## wp ollama run  qwen2.5:3b-instruct-q3_K_S##
-
-## COHERE_API_KEY=REMOVED ##
-   
-### 
