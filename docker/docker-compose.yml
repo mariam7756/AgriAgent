@@ -20,7 +20,7 @@ services:
     restart: always
 
   pgvector:
-      image: pgvector/pgvector:0.8.2-pg17
+      image: pgvector/pgvectorcker 
       container_name: pgvector
       ports:
         - "5432:5432"
