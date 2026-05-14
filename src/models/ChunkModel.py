@@ -60,5 +60,5 @@ class ChunkModel(BaseDataModel):
             stmt = select(DataChunk).where(DataChunk.chunk_project_id == project_id).offset((page_no - 1) * page_size).limit(page_size)
             result = await session.execute(stmt)
             records = result.scalars().all()
-        return
+        return records
             
