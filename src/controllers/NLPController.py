@@ -98,7 +98,7 @@ class NLPController(BaseController):
     
     async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
         
-        answer, full_prompt, chat_history = None, None, None
+        answer,context_tex, chat_history = None, None, None
 
         # step1: retrieve related documents
         retrieved_documents = await self.search_vector_db_collection(
@@ -107,8 +107,8 @@ class NLPController(BaseController):
             limit=limit,
         )
 
-        if not retrieved_documents or len(retrieved_documents) == 0:
-            return answer, full_prompt, chat_history
+        if not retrieved_documents:
+            return answer, context_text , chat_history
         seen = set()
         unique_docs = []
         for doc in retrieved_documents:
@@ -118,36 +118,56 @@ class NLPController(BaseController):
                  
         retrieved_documents = unique_docs
         
+        context_text = "\n".join([
+        doc.text for doc in retrieved_documents
+    ])
         
+    
         # step2: Construct LLM prompt
         system_prompt = self.template_parser.get("rag", "system_prompt")
 
-        documents_prompts = "\n".join([
-            self.template_parser.get("rag", "document_prompt", {
-                    "doc_num": idx + 1,
-                    "chunk_text": doc.text,
-            })
-            for idx, doc in enumerate(retrieved_documents)
-        ])
+        ##documents_prompts = "\n".join([
+            ##self.template_parser.get("rag", "document_prompt", {
+                    ##"doc_num": idx + 1,
+                    ##"chunk_text": doc.text,
+            ##})
+            ##for idx, doc in enumerate(retrieved_documents)
+        ##])
 
-        footer_prompt = self.template_parser.get("rag", "footer_prompt", {
-            "query": query
-        })
+        ##footer_prompt = self.template_parser.get("rag", "footer_prompt", {
+            ##"query": query
+        ##})
 
         # step3: Construct Generation Client Prompts
+        
         chat_history = [
-            self.generation_client.construct_prompt(
-                prompt=system_prompt,
-                role=self.generation_client.enums.SYSTEM.value,
-            )
+            {
+                "role": "system", 
+                "content": str(system_prompt) if system_prompt else "أنت مساعد خبير زراعي."
+            },
+            {
+                "role": "user",
+                "content": f"المعلومات المتاحة:\n{context_text}\n\nالسؤال: {query}"
+                
+            }
         ]
-
-        full_prompt = "\n\n".join([ documents_prompts,  footer_prompt])
+                
 
         # step4: Retrieve the Answer
         answer = self.generation_client.generate_text(
-            prompt=full_prompt,
+            
             chat_history=chat_history
         )
+        
+        if answer:
+            answer = (
+                
+            answer
+            .replace("المستند رقم", "")
+            .replace("بناءً على البيانات", "")
+            .strip()
+          )
+        
+        
 
-        return answer, full_prompt, chat_history
+        return answer, context_text, chat_history

@@ -246,7 +246,7 @@ class PGVectorProvider(VectorDBInterface):
                     values = []
 
                     for _text, _vector, _metadata, _record_id in zip(batch_texts, batch_vectors, batch_metadata, batch_record_ids):
-                        if _record_id is None or _record_id == 0:
+                        if _record_id is None :
                             raise ValueError(f"Invalid chunk_id: {_record_id}")
                         
                         metadata_json = json.dumps(_metadata, ensure_ascii=False) if _metadata is not None else "{}"
@@ -266,7 +266,7 @@ class PGVectorProvider(VectorDBInterface):
                     
                     await session.execute(batch_insert_sql, values)
 
-        await self.create_vector_index(collection_name=collection_name)
+        #await self.create_vector_index(collection_name=collection_name)
 
         return True
     

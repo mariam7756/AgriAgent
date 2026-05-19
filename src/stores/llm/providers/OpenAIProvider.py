@@ -68,7 +68,7 @@ class OpenAIProvider(LLMInterface):
     
     def generate_text(
         self,
-        prompt: str,
+        
         chat_history: list = None,
         max_output_tokens: int = None,
         temperature: float = None
@@ -78,43 +78,48 @@ class OpenAIProvider(LLMInterface):
             self.logger.error("Client not initialized")
             return None
 
-        if not self.generation_model_id:
-            self.logger.error("Generation model not set")
-            return None
+        ##if not self.generation_model_id:
+            ##self.logger.error("Generation model not set")
+           ## return None
 
 
-        if chat_history is None:
-            chat_history = []
+        ##if chat_history is None:
+            ##chat_history = []
 
-        max_output_tokens = max_output_tokens or self.default_generation_max_output_tokens
-        temperature = temperature if temperature is not None else self.default_generation_temperature
+        ####temperature = temperature if temperature is not None else self.default_generation_temperature
 
-        messages = chat_history.copy()
+        ##messages = chat_history.copy()
 
-        messages.append(
-            self.construct_prompt(prompt, OpenAIEnums.USER.value)
-        )
+        ##messages.append(
+            ##self.construct_prompt(prompt, OpenAIEnums.USER.value)
+        ##)
 
 
         try:
             
             response = self.client.chat.completions.create(
                 model=self.generation_model_id,
-                messages=messages,
+                messages=chat_history,
                 max_tokens=max_output_tokens,
                 temperature=temperature
             )
 
-        except Exception as e:
-            self.logger.error(f"LLM API error: {str(e)}")
-            return None
+        ##except Exception as e:
+            ##self.logger.error(f"LLM API error: {str(e)}")
+            ##return None
 
-        if not response or not response.choices:
-            self.logger.error("Empty response from LLM")
-            return None
+        ##if not response or not response.choices:
+            ##self.logger.error("Empty response from LLM")
+            ##return None
         
 
-        return response.choices[0].message.content
+            return response.choices[0].message.content
+        except Exception as e:
+          self.logger.error(f"LLM API error: {str(e)}")
+        return None
+    
+    
+    
 
 
 
