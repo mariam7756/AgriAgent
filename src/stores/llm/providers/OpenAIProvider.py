@@ -2,7 +2,7 @@ from ..LLMInterface import LLMInterface
 from ..LLMEnums import OpenAIEnums
 from openai import OpenAI
 import logging
-from typing import List, Union 
+
 
 
 class OpenAIProvider(LLMInterface):
@@ -19,7 +19,8 @@ class OpenAIProvider(LLMInterface):
         self.api_key = api_key
         self.api_url = api_url or"http://172.20.0.1:11434/v1"
 
-        self.default_input_max_characters = default_input_max_characters
+        # Increased default truncation limit to avoid cutting off RAG context
+        self.default_input_max_characters = 8000
         self.default_generation_max_output_tokens = default_generation_max_output_tokens
         self.default_generation_temperature = default_generation_temperature
 
@@ -68,7 +69,7 @@ class OpenAIProvider(LLMInterface):
     
     def generate_text(
         self,
-        
+        prompt: str,
         chat_history: list = None,
         max_output_tokens: int = None,
         temperature: float = None
@@ -78,61 +79,56 @@ class OpenAIProvider(LLMInterface):
             self.logger.error("Client not initialized")
             return None
 
-        ##if not self.generation_model_id:
-            ##self.logger.error("Generation model not set")
-           ## return None
+        if not self.generation_model_id:
+            self.logger.error("Generation model not set")
+            return None
 
 
-        ##if chat_history is None:
-            ##chat_history = []
+        if chat_history is None:
+            chat_history = []
 
-        ####temperature = temperature if temperature is not None else self.default_generation_temperature
+        max_output_tokens = max_output_tokens or self.default_generation_max_output_tokens
+        temperature = temperature if temperature is not None else self.default_generation_temperature
 
-        ##messages = chat_history.copy()
+        messages = chat_history.copy()
 
-        ##messages.append(
-            ##self.construct_prompt(prompt, OpenAIEnums.USER.value)
-        ##)
+        messages.append(
+            self.construct_prompt(prompt, OpenAIEnums.USER.value)
+        )
 
 
         try:
             
             response = self.client.chat.completions.create(
                 model=self.generation_model_id,
-                messages=chat_history,
+                messages=messages,
                 max_tokens=max_output_tokens,
                 temperature=temperature
             )
+            
 
-        ##except Exception as e:
-            ##self.logger.error(f"LLM API error: {str(e)}")
-            ##return None
+        except Exception as e:
+            self.logger.error(f"LLM API error: {str(e)}")
+            return None
 
-        ##if not response or not response.choices:
-            ##self.logger.error("Empty response from LLM")
-            ##return None
+        if not response or not response.choices:
+            self.logger.error("Empty response from LLM")
+            return None
         
 
-            return response.choices[0].message.content
-        except Exception as e:
-          self.logger.error(f"LLM API error: {str(e)}")
-        return None
-    
-    
-    
+        return response.choices[0].message.content
 
 
 
     # Embedding
     
-    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
+    def embed_text(self, text: str, document_type: str = None):
 
         if not self.client:
             self.logger.error("Client not initialized")
             return None 
         
-        if isinstance(text, str):
-            text = [text]
+        
         
 
         if not self.embedding_model_id:
@@ -154,14 +150,4 @@ class OpenAIProvider(LLMInterface):
             return None
 
 
-        
-        return [ rec.embedding for rec in response.data ]
-    
-    def construct_prompt(self, prompt: str, role: str):
-        return {
-            "role": role,
-            "text": self.process_text(prompt)
-        }
-        
-        
-    
+        return response.data[0].embedding

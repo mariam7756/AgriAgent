@@ -98,7 +98,7 @@ class NLPController(BaseController):
     
     async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
         
-        answer,context_tex, chat_history = None, None, None
+        answer, context_text, chat_history = None, None, None
 
         # step1: retrieve related documents
         retrieved_documents = await self.search_vector_db_collection(
@@ -108,35 +108,26 @@ class NLPController(BaseController):
         )
 
         if not retrieved_documents:
-            return answer, context_text , chat_history
+            return answer, context_text, chat_history
+            
         seen = set()
         unique_docs = []
         for doc in retrieved_documents:
-             if doc.text not in seen:
-                 unique_docs.append(doc)
-                 seen.add(doc.text)
+            if doc.text not in seen:
+                unique_docs.append(doc)
+                seen.add(doc.text)
                  
         retrieved_documents = unique_docs
         
-        context_text = "\n".join([
-        doc.text for doc in retrieved_documents
-    ])
+        # تنظيم السياق بوضوح للموديل
+        context_text = "\n---\n".join([
+            f"[مصدر زراعي]: {doc.text}" for doc in retrieved_documents
+        ])
         
-    
         # step2: Construct LLM prompt
         system_prompt = self.template_parser.get("rag", "system_prompt")
 
-        ##documents_prompts = "\n".join([
-            ##self.template_parser.get("rag", "document_prompt", {
-                    ##"doc_num": idx + 1,
-                    ##"chunk_text": doc.text,
-            ##})
-            ##for idx, doc in enumerate(retrieved_documents)
-        ##])
 
-        ##footer_prompt = self.template_parser.get("rag", "footer_prompt", {
-            ##"query": query
-        ##})
 
         # step3: Construct Generation Client Prompts
         
@@ -152,7 +143,6 @@ class NLPController(BaseController):
             }
         ]
                 
-
         # step4: Retrieve the Answer
         answer = self.generation_client.generate_text(
             
@@ -161,13 +151,11 @@ class NLPController(BaseController):
         
         if answer:
             answer = (
-                
-            answer
-            .replace("المستند رقم", "")
-            .replace("بناءً على البيانات", "")
-            .strip()
-          )
-        
-        
+                answer
+                .replace("المستند رقم", "")
+                .replace("بناءً على البيانات", "")
+                .strip()
+            )
 
         return answer, context_text, chat_history
+    

@@ -266,7 +266,7 @@ class PGVectorProvider(VectorDBInterface):
                     
                     await session.execute(batch_insert_sql, values)
 
-        #await self.create_vector_index(collection_name=collection_name)
+        await self.create_vector_index(collection_name=collection_name)
 
         return True
     
