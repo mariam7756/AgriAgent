@@ -17,7 +17,7 @@ class OpenAIProvider(LLMInterface):
     ):
 
         self.api_key = api_key
-        self.api_url = api_url or"http://172.20.0.1:11434/v1"
+        self.api_url = api_url or "http://127.0.0.1:11434/v1"
 
         # Increased default truncation limit to avoid cutting off RAG context
         self.default_input_max_characters = 8000
@@ -69,12 +69,12 @@ class OpenAIProvider(LLMInterface):
     
     def generate_text(
         self,
-        prompt: str,
+        prompt: str = None,
         chat_history: list = None,
         max_output_tokens: int = None,
-        temperature: float = None
+        temperature: float = None,
     ):
-
+        
         if not self.client:
             self.logger.error("Client not initialized")
             return None
@@ -90,11 +90,12 @@ class OpenAIProvider(LLMInterface):
         max_output_tokens = max_output_tokens or self.default_generation_max_output_tokens
         temperature = temperature if temperature is not None else self.default_generation_temperature
 
-        messages = chat_history.copy()
+        messages = list(chat_history)
 
-        messages.append(
-            self.construct_prompt(prompt, OpenAIEnums.USER.value)
-        )
+        if prompt:
+            messages.append(
+                self.construct_prompt(prompt, OpenAIEnums.USER.value)
+            )
 
 
         try:
@@ -103,10 +104,9 @@ class OpenAIProvider(LLMInterface):
                 model=self.generation_model_id,
                 messages=messages,
                 max_tokens=max_output_tokens,
-                temperature=temperature
+                temperature=temperature,
             )
             
-
         except Exception as e:
             self.logger.error(f"LLM API error: {str(e)}")
             return None
@@ -120,28 +120,27 @@ class OpenAIProvider(LLMInterface):
 
 
 
-    # Embedding
-    
-    def embed_text(self, text: str, document_type: str = None):
-
+ # Embedding
+    def embed_text(self, text, document_type: str = None):
         if not self.client:
             self.logger.error("Client not initialized")
-            return None 
-        
-        
-        
+            return None
 
         if not self.embedding_model_id:
             self.logger.error("Embedding model not set")
             return None
 
+        if isinstance(text, str):
+            inputs = [self.process_text(text)]
+        else:
+            inputs = [self.process_text(t) for t in text]
 
         try:
             response = self.client.embeddings.create(
                 model=self.embedding_model_id,
-                input=text
+                input=inputs,
             )
-
+            
         except Exception as e:
             self.logger.error(f"Embedding error: {str(e)}")
             return None
@@ -149,5 +148,4 @@ class OpenAIProvider(LLMInterface):
         if not response or not response.data:
             return None
 
-
-        return response.data[0].embedding
+        return [item.embedding for item in response.data]
