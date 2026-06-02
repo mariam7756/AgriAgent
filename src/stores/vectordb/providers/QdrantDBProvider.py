@@ -209,7 +209,9 @@ class QdrantDBProvider(VectorDBInterface):
                 retrieved_docs.append(
                     RetrievedDocument(
                         score=getattr(point, "score", 0.0),
-                        text=point.payload.get("text", "")
+                        text=point.payload.get("text", ""),
+                        metadata=point.payload.get("metadata", {}),
+                        vector_score=getattr(point, "score", 0.0),
                     )
                 )
                         

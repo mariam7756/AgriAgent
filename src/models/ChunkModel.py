@@ -44,6 +44,7 @@ class ChunkModel(BaseDataModel):
                 for i in range(0, len(chunks), batch_size):
                     batch = chunks[i:i+batch_size]
                     session.add_all(batch)
+                    await session.flush()
             await session.commit()
         return len(chunks)
 
@@ -54,6 +55,20 @@ class ChunkModel(BaseDataModel):
             result = await session.execute(stmt)
             await session.commit()
         return result.rowcount
+    
+    async def delete_chunks_by_asset_id(self, asset_id: int):
+        async with self.collection() as session:
+            stmt = delete(DataChunk).where(DataChunk.chunk_asset_id == asset_id)
+            result = await session.execute(stmt)
+            await session.commit()
+        return result.rowcount
+    async def get_chunks_by_asset_id(self, asset_id: int):
+        async with self.collection() as session:
+            stmt = select(DataChunk).where(DataChunk.chunk_asset_id == asset_id)
+            result = await session.execute(stmt)
+            records = result.scalars().all()
+        return records
+    
         
     async def get_poject_chunks(self, project_id: ObjectId, page_no: int=1, page_size: int=50):
         async with self.collection() as session:
@@ -71,3 +86,6 @@ class ChunkModel(BaseDataModel):
             total_count = records_count.scalar()
         
         return total_count
+    
+    async def delete_chunks_by_asset_id(self, asset_id: int):
+        ...

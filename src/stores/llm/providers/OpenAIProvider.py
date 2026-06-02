@@ -2,6 +2,7 @@ from ..LLMInterface import LLMInterface
 from ..LLMEnums import OpenAIEnums
 from openai import OpenAI
 import logging
+from typing import List, Union
 
 
 
@@ -90,7 +91,7 @@ class OpenAIProvider(LLMInterface):
         max_output_tokens = max_output_tokens or self.default_generation_max_output_tokens
         temperature = temperature if temperature is not None else self.default_generation_temperature
 
-        messages = list(chat_history)
+        messages = chat_history.copy()
 
         if prompt:
             messages.append(
@@ -121,7 +122,7 @@ class OpenAIProvider(LLMInterface):
 
 
  # Embedding
-    def embed_text(self, text, document_type: str = None):
+    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
         if not self.client:
             self.logger.error("Client not initialized")
             return None
@@ -129,16 +130,18 @@ class OpenAIProvider(LLMInterface):
         if not self.embedding_model_id:
             self.logger.error("Embedding model not set")
             return None
+        single_input = isinstance(text, str)
+        inputs = [text] if single_input else text
 
-        if isinstance(text, str):
-            inputs = [self.process_text(text)]
-        else:
-            inputs = [self.process_text(t) for t in text]
+
+
+
+    
 
         try:
             response = self.client.embeddings.create(
                 model=self.embedding_model_id,
-                input=inputs,
+                input=[self.process_text(t) for t in inputs],
             )
             
         except Exception as e:
@@ -147,5 +150,12 @@ class OpenAIProvider(LLMInterface):
 
         if not response or not response.data:
             return None
+        
+        embeddings = [item.embedding for item in response.data]
+        
+        if single_input:
+            return embeddings[0]
+        
+        return embeddings
 
-        return [item.embedding for item in response.data]
+       

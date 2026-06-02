@@ -20,3 +20,10 @@ class ResponseSignal(Enum):
     RAG_ANSWER_ERROR = "rag_answer_error"
     RAG_ANSWER_SUCCESS = "rag_answer_success"
     
+    SYNC_SOURCES_SUCCESS = "sync_sources_success"
+    SYNC_SOURCES_ERROR = "sync_sources_error"
+    SOURCES_STATUS_SUCCESS = "sources_status_success"
+
+    
+    
+    

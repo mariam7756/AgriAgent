@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List 
+from typing import List, Optional
 
 class Settings(BaseSettings):
 
@@ -38,11 +38,20 @@ class Settings(BaseSettings):
     VECTOR_DB_PATH : str
     VECTOR_DB_DISTANCE_METHOD: str = None
     VECTOR_DB_PGVEC_INDEX_THRESHOLD: int = 100
+    
+    
+    
 
     PRIMARY_LANG: str = "en"
     DEFAULT_LANG: str = "en"
+    
+    AGRO_LIB_BASE_URL: str = "https://www.agro-lib.site"
+    AGRO_LIB_CRAWL_DELAY: float = 1.0  
+    ADMIN_API_KEY: Optional[str] = None
+    DEFAULT_KB_PROJECT_ID: int = 1
 
     class Config:
+
         env_file = ".env"
         
 

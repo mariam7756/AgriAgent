@@ -270,6 +270,22 @@ class PGVectorProvider(VectorDBInterface):
 
         return True
     
+    async def delete_by_chunk_ids(self, collection_name: str, chunk_ids: list):
+        if not chunk_ids:
+            return True
+        is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
+        if not is_collection_existed:
+            return True
+        ids_csv = ",".join(str(int(chunk_id)) for chunk_id in chunk_ids)
+        async with self.db_client() as session:
+            async with session.begin():
+                delete_sql = sql_text(
+                    f"DELETE FROM {collection_name} WHERE chunk_id IN ({ids_csv})"
+                )
+                await session.execute(delete_sql)
+                await session.commit()
+        return True
+    
     async def search_by_vector(self, collection_name: str, vector: list, limit: int):
 
         is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
@@ -280,20 +296,39 @@ class PGVectorProvider(VectorDBInterface):
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
         async with self.db_client() as session:
             async with session.begin():
-                search_sql = sql_text(f'SELECT {PgVectorTableSchemeEnums.TEXT.value} as text, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
-                                      f' FROM {collection_name}'
-                                      ' ORDER BY score DESC '
-                                      f'LIMIT {limit}'
-                                      )
+                search_sql = sql_text(
+                    f'SELECT {PgVectorTableSchemeEnums.TEXT.value} as text, '
+                    f'{PgVectorTableSchemeEnums.METADATA.value} as metadata, '
+                    f'{PgVectorTableSchemeEnums.CHUNK_ID.value} as chunk_id, '
+                    f'1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score '
+                    f'FROM {collection_name} '
+                    'ORDER BY score DESC '
+                    f'LIMIT {limit}'
+                )
+                 
                 
                 result = await session.execute(search_sql, {"vector": vector})
 
                 records = result.fetchall()
 
-                return [
-                    RetrievedDocument(
-                        text=record.text,
-                        score=record.score
+                documents = []
+                for record in records:
+                    metadata = record.metadata
+                    if isinstance(metadata, str):
+                        metadata = json.loads(metadata) if metadata else {}
+                    if metadata is None:
+                        metadata = {}
+                    documents.append(
+                        RetrievedDocument(
+                            text=record.text,
+                            score=record.score,
+                            metadata=metadata,
+                            chunk_id=record.chunk_id,
+                            vector_score=record.score,
+                        )
                     )
-                    for record in records
-                ]
+                   
+                
+                return documents
+
+                

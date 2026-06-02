@@ -1,0 +1,83 @@
+{
+	"info": {
+		"_postman_id": "agriagent-kb-collection",
+		"name": "AgriAgent-KB",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1-health-check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "{{api}}/api/v1/"
+			}
+		},
+		{
+			"name": "2-admin-sync-full-reindex",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"labels\": [\n    \"الانتاج النباتي\",\n    \"الري و المياه\",\n    \"وقاية النبات\",\n    \"علوم الاغذية\"\n  ],\n  \"max_pages\": 5,\n  \"chunk_size\": 1000,\n  \"overlap_size\": 100,\n  \"force_reindex\": true\n}"
+				},
+				"url": "{{api}}/api/v1/admin/sources/sync/1"
+			}
+		},
+		{
+			"name": "3-admin-sources-status",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "{{api}}/api/v1/admin/sources/status/1"
+			}
+		},
+		{
+			"name": "4-rag-search-with-sources",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"text\": \"كيف أزرع الزيتون؟\",\n  \"limit\": 5\n}"
+				},
+				"url": "{{api}}/api/v1/nlp/index/search/1"
+			}
+		},
+		{
+			"name": "5-rag-answer-with-sources",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"text\": \"كيف أزرع الزيتون؟\",\n  \"limit\": 5\n}"
+				},
+				"url": "{{api}}/api/v1/nlp/index/answer/1"
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "api",
+			"value": "http://127.0.0.1:5000",
+			"type": "string"
+		}
+	]
+}

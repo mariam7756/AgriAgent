@@ -80,12 +80,12 @@ async def upload_data(request: Request, project_id: int, file: UploadFile,
         asset_size=os.path.getsize(file_path)
     )
 
-    asset_record = await asset_model.create_asset(asset=asset_resource)
+    asset_id = await asset_model.create_asset(asset=asset_resource)
 
     return JSONResponse(
             content={
                 "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value,
-                "file_id": str(asset_record.asset_id),
+                "file_id": str(asset_id),
             }
         )
 

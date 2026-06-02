@@ -1,7 +1,6 @@
 from .BaseDataModel import BaseDataModel
 from .db_schemes import Asset
-from .enums.DataBaseEnum import DataBaseEnum
-from bson import ObjectId
+
 from sqlalchemy.future import select
 
 class AssetModel(BaseDataModel):
@@ -17,13 +16,14 @@ class AssetModel(BaseDataModel):
         return instance
 
     
-    async def create_asset(self, asset: Asset):
+    async def create_asset(self, asset: Asset) -> int:
         async with self.collection() as session:
             async with session.begin():
-                    session.add(asset)
-            await session.commit()
-            await session.refresh(asset)
-        return asset
+                session.add(asset)
+                await session.flush()
+                asset_id = asset.asset_id
+        return asset_id
+                    
 
         
     async def get_all_project_assets(self, asset_project_id: str, asset_type: str):
@@ -46,8 +46,37 @@ class AssetModel(BaseDataModel):
             result = await session.execute(stmt)
             record = result.scalar_one_or_none()
         return record
+    
+    async def get_web_asset_by_source_url(self, asset_project_id: int, source_url: str):
+        async with self.collection() as session:
+            stmt = select(Asset).where(
+                Asset.asset_project_id == asset_project_id,
+                Asset.asset_type == "web",
+                Asset.asset_config.contains({"source_url": source_url}),
+            )
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+        return record
             
-        
+    async def get_web_asset_by_source_url(self, asset_project_id: int, source_url: str):
+        async with self.collection() as session:
+            stmt = select(Asset).where(
+                Asset.asset_project_id == asset_project_id,
+                Asset.asset_type == "web",
+                Asset.asset_config.contains({"source_url": source_url}),
+            )
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
+        return record
+    
+    
+    async def update_asset(self, asset: Asset):
+        async with self.collection() as session:
+            async with session.begin():
+                await session.merge(asset)
+            await session.commit()
+            await session.refresh(asset)
+        return asset
         
 
         

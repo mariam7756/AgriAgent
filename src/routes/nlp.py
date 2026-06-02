@@ -49,7 +49,7 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     has_records = True
     page_no = 1
     inserted_items_count = 0
-    idx = 0
+    
 
     while has_records:
         page_chunks = await chunk_model.get_poject_chunks(project_id=project.project_id, page_no=page_no)
@@ -61,7 +61,7 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
             break
 
         chunks_ids = [c.chunk_id for c in page_chunks]
-        idx += len(page_chunks)
+        
         
         # Only reset on the first page
         current_do_reset = bool(push_request.do_reset) and page_no == 1
@@ -171,7 +171,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         template_parser=request.app.template_parser,
     )
 
-    answer, full_prompt, chat_history, follow_up = await nlp_controller.answer_rag_question(
+    answer, full_prompt, chat_history, sources = await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=min(search_request.limit or 3, 3),
@@ -187,7 +187,9 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         content={
             "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
             "answer": answer,
-            "follow_up": follow_up,
+            "sources": sources,
+            "full_prompt": full_prompt,
+            "chat_history": chat_history
         }
     )
     

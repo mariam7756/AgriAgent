@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routes import base, data, nlp
+from routes import admin, base, data, nlp
 
 
 from helpers.config import get_settings
@@ -77,3 +77,4 @@ async def shutdown_span():
 app.include_router(base.base_router)
 app.include_router(data.data_router)
 app.include_router(nlp.nlp_router)
+app.include_router(admin.admin_router)
