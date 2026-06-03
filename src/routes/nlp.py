@@ -4,6 +4,7 @@ from routes.schemes.nlp import PushRequest, SearchRequest
 from models.ProjectModel import ProjectModel
 from models.ChunkModel import ChunkModel
 from controllers import NLPController
+from controllers import KnowledgeController
 from models import ResponseSignal
 
 
@@ -170,6 +171,27 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         embedding_client=request.app.embedding_client,
         template_parser=request.app.template_parser,
     )
+    
+    knowledge_controller = KnowledgeController(db_client=request.app.db_client)
+    knowledge_answer = await knowledge_controller.answer_from_knowledge_store(
+        project_id=project.project_id,
+        query=search_request.text,
+        current_crop=search_request.current_crop,
+        limit=min(search_request.limit or 3, 3),
+    )
+    if knowledge_answer is not None:
+        return JSONResponse(
+            content={
+                "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
+                "answer": knowledge_answer["answer"],
+                "sources": knowledge_answer.get("sources", []),
+                "flow": knowledge_answer.get("flow", {}),
+                "answer_mode": knowledge_answer.get("mode", "knowledge_store"),
+                "full_prompt": None,
+                "chat_history": [],
+            }
+        )
+    
 
     answer, full_prompt, chat_history, sources = await nlp_controller.answer_rag_question(
         project=project,
@@ -188,6 +210,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
             "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
             "answer": answer,
             "sources": sources,
+            "answer_mode": "rag",
             "full_prompt": full_prompt,
             "chat_history": chat_history
         }

@@ -7,4 +7,5 @@ class PushRequest(BaseModel):
 class SearchRequest(BaseModel):
     text: str
     limit: Optional[int] = 3
+    current_crop: Optional[str] = None
     
