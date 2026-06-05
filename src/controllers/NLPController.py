@@ -185,17 +185,17 @@ class NLPController(BaseController):
         system_prompt = self.template_parser.get("rag", "system_prompt")
         footer_prompt = self.template_parser.get("rag", "footer_prompt")
 
-        footer_text = ""
+        footer_text = f"سؤال المزارع: {query}\nرد عملي ومباشر زي خبير في الحقل."
         if footer_prompt:
             try:
                 footer_text = footer_prompt.substitute(query=query)
-            except Exception:
-                footer_text = f"سؤال المزارع: {query}"
+            except (KeyError, ValueError):
+                footer_text = f"سؤال المزارع: {query}\nرد عملي ومباشر زي خبير في الحقل."
 
         chat_history = [
             {
                 "role": "system",
-                "content": str(system_prompt) if system_prompt else "أنت خضر، مساعد زراعي مصري خبير.",
+                "content": system_prompt.template if hasattr(system_prompt, 'template') else str(system_prompt) if system_prompt else " مساعد زراعي مصري خبير عملي، بتتكلم بلغة المزارع المصري.",
             },
             {
                 "role": "user",

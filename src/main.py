@@ -38,7 +38,8 @@ async def startup_span():
         )
 
     app.embedding_client = llm_provider_factory.create(
-        provider=settings.EMBEDDING_BACKEND
+    provider=settings.EMBEDDING_BACKEND,
+    is_embedding=True
     )
 
     if app.embedding_client:

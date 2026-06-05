@@ -1,59 +1,67 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 from typing import List, Optional
+
 
 class Settings(BaseSettings):
 
     APP_NAME: str
     APP_VERSION: str
-    OPENAI_API_KEY: str
+    
 
-    FILE_ALLOWED_TYPES: list
-    FILE_MAX_SIZE: int
-    FILE_DEFAULT_CHUNK_SIZE: int
-
+    # Database
     POSTGRES_USERNAME: str
     POSTGRES_PASSWORD: str
     POSTGRES_HOST: str
     POSTGRES_PORT: int
     POSTGRES_MAIN_DATABASE: str
-    
 
+    # File processing
+    FILE_ALLOWED_TYPES: list
+    FILE_MAX_SIZE: int
+    FILE_DEFAULT_CHUNK_SIZE: int
+
+    # Generation — Groq
     GENERATION_BACKEND: str
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_URL: Optional[str] = None
+    COHERE_API_KEY: Optional[str] = None
+    GENERATION_MODEL_ID: Optional[str] = None
+    GENERATION_MODEL_ID_LITERAL: Optional[List[str]] = None
+    GENERATION_DAFAULT_MAX_TOKENS: int = 512
+    GENERATION_DAFAULT_TEMPERATURE: float = 0.3
+
+    # Embedding — Ollama local (URL منفصل عن Groq)
     EMBEDDING_BACKEND: str
+    EMBEDDING_MODEL_ID: Optional[str] = None
+    EMBEDDING_MODEL_SIZE: Optional[int] = None
+    EMBEDDING_API_URL: str = "http://127.0.0.1:11434/v1"
+    EMBEDDING_API_KEY: str = "ollama"
 
-    OPENAI_API_KEY: str = None
-    OPENAI_API_URL: str = None
-    COHERE_API_KEY: str = None
-    
-    GENERATION_MODEL_ID_LITERAL: List[str] = None
-    GENERATION_MODEL_ID: str = None
-    EMBEDDING_MODEL_ID: str = None
-    EMBEDDING_MODEL_SIZE: int = None
-    INPUT_DAFAULT_MAX_CHARACTERS: int = None
-    GENERATION_DAFAULT_MAX_TOKENS: int = None
-    GENERATION_DAFAULT_TEMPERATURE: float = None
+    # Input
+    INPUT_DAFAULT_MAX_CHARACTERS: int = 8000
 
-    VECTOR_DB_BACKEND_LITERAL : List[str] = None
-    VECTOR_DB_BACKEND : str
-    VECTOR_DB_PATH : str
-    VECTOR_DB_DISTANCE_METHOD: str = None
+    # Vector DB
+    VECTOR_DB_BACKEND: str
+    VECTOR_DB_BACKEND_LITERAL: Optional[List[str]] = None
+    VECTOR_DB_PATH: Optional[str] = None
+    VECTOR_DB_DISTANCE_METHOD: Optional[str] = None
     VECTOR_DB_PGVEC_INDEX_THRESHOLD: int = 100
-    
-    
-    
 
-    PRIMARY_LANG: str = "en"
-    DEFAULT_LANG: str = "en"
-    
-    AGRO_LIB_BASE_URL: str = "https://www.agro-lib.site"
-    AGRO_LIB_CRAWL_DELAY: float = 1.0  
+    # Languages
+    PRIMARY_LANG: str = "ar"
+    DEFAULT_LANG: str = "ar"
+
+    # Agri config
+    AGRO_LIB_BASE_URL: Optional[str] = None
+    AGRO_LIB_CRAWL_DELAY: float = 1.0
     ADMIN_API_KEY: Optional[str] = None
     DEFAULT_KB_PROJECT_ID: int = 1
 
     class Config:
-
+        
         env_file = ".env"
         
+
 
 def get_settings():
     return Settings()
