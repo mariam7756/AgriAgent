@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from controllers.AgroLibCrawler import AgroLibCrawler
+from controllers.FAOCrawler import  FAOCrawler
 from controllers.NLPController import NLPController
 from controllers.ProcessController import ProcessController
 from models.AssetModel import AssetModel
@@ -136,7 +136,7 @@ class IndexController(BaseController):
         overlap_size: int = 100,
         force_reindex: bool = False,
     ) -> Dict:
-        crawler = AgroLibCrawler()
+        crawler = FAOCrawler()
         asset_model = await AssetModel.create_instance(db_client=self.db_client)
         chunk_model = await ChunkModel.create_instance(db_client=self.db_client)
 

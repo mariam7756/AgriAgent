@@ -171,34 +171,52 @@ class NLPController(BaseController):
                 "metadata_score": doc.metadata_score,
             })
         context_text = "\n---\n".join(context_blocks)
+
+        # فلتري الـ noise قبل ما يوصل للـ LLM
+        NOISE = {"تنزيل الكتاب", "تحميل الكتاب", "download", "اضغط هنا", "-----"}
+        clean_blocks = [
+            b for b in context_blocks
+            if len(b.strip()) > 80 and not any(n in b for n in NOISE)
+        ]
+        clean_context = "\n---\n".join(clean_blocks) if clean_blocks else (
+            "لا يوجد سياق زراعي كافٍ — أجب من خبرتك الزراعية العامة."
+        )
+
         system_prompt = self.template_parser.get("rag", "system_prompt")
-            
+        footer_prompt = self.template_parser.get("rag", "footer_prompt")
+
+        footer_text = ""
+        if footer_prompt:
+            try:
+                footer_text = footer_prompt.substitute(query=query)
+            except Exception:
+                footer_text = f"سؤال المزارع: {query}"
+
         chat_history = [
             {
-                "role": "system", 
-                "content": str(system_prompt) if system_prompt else "أنت مساعد خبير زراعي."
+                "role": "system",
+                "content": str(system_prompt) if system_prompt else "أنت خضر، مساعد زراعي مصري خبير.",
             },
             {
                 "role": "user",
                 "content": (
-                    "استخدم المعلومات التالية فقط للإجابة. "
-                    "اذكر اسم المصدر عندما يكون ذلك مفيداً.\n\n"
-                    f"{context_text}\n\nالسؤال: {query}"
-                )
-            }
+                    f"معلومات زراعية من المصادر:\n{clean_context}\n\n---\n{footer_text}"
+                ),
+            },
         ]
-                
-        answer = self.generation_client.generate_text(
-            chat_history=chat_history
-        )
-        
+
+        answer = self.generation_client.generate_text(chat_history=chat_history)
+
         if answer:
             answer = (
                 answer
                 .replace("المستند رقم", "")
                 .replace("بناءً على البيانات", "")
+                .replace("بناءً على المستندات", "")
+                .replace("بالطبع،", "")
                 .strip()
             )
+
 
         return answer, context_text, chat_history, sources
     

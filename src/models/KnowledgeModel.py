@@ -1,4 +1,4 @@
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from sqlalchemy.future import select
 
 from .BaseDataModel import BaseDataModel
@@ -15,14 +15,9 @@ class KnowledgeModel(BaseDataModel):
         return cls(db_client)
 
     async def upsert_source(
-        self,
-        project_id: int,
-        source_name: str,
-        source_type: str,
-        source_url: str = None,
-        source_country: str = None,
-        source_language: str = "ar",
-        source_metadata: dict = None,
+        self, project_id, source_name, source_type,
+        source_url=None, source_country=None,
+        source_language="ar", source_metadata=None,
     ) -> KnowledgeSource:
         async with self.collection() as session:
             stmt = select(KnowledgeSource).where(
@@ -52,7 +47,7 @@ class KnowledgeModel(BaseDataModel):
             await session.refresh(record)
         return record
 
-    async def replace_project_records(self, project_id: int, records_payload: list):
+    async def replace_project_records(self, project_id: int, records_payload: list) -> int:
         async with self.collection() as session:
             await session.execute(
                 delete(KnowledgeRecord).where(KnowledgeRecord.record_project_id == project_id)
@@ -63,29 +58,29 @@ class KnowledgeModel(BaseDataModel):
         return len(records_payload)
 
     async def get_records(
-        self,
-        project_id: int,
-        name: str = None,
-        topic: str = None,
-        limit: int = 10,
+        self, project_id: int, name: str = None,
+        topic: str = None, limit: int = 10,
     ):
         async with self.collection() as session:
-            stmt = select(KnowledgeRecord).where(KnowledgeRecord.record_project_id == project_id)
-            if name:
-                stmt = stmt.where(KnowledgeRecord.name == name)
-            if topic:
-                stmt = stmt.where(KnowledgeRecord.topic == topic)
-            stmt = stmt.limit(limit)
+            stmt = select(KnowledgeRecord).where(
+                KnowledgeRecord.record_project_id == project_id
+            )
+            if name and name != "general":
+                stmt = stmt.where(or_(
+                    KnowledgeRecord.name.ilike(f"%{name}%"),
+                    KnowledgeRecord.content.ilike(f"%{name}%"),
+                ))
+            if topic and topic != "general":
+                stmt = stmt.where(or_(
+                    KnowledgeRecord.topic.ilike(f"%{topic}%"),
+                ))
+            stmt = stmt.order_by(KnowledgeRecord.confidence.desc()).limit(limit)
             result = await session.execute(stmt)
             return result.scalars().all()
 
     async def append_feedback(
-        self,
-        project_id: int,
-        question: str,
-        answer: str,
-        feedback: str = "pending",
-        feedback_metadata: dict = None,
+        self, project_id, question, answer,
+        feedback="pending", feedback_metadata=None,
     ):
         rec = KnowledgeFeedback(
             feedback_project_id=project_id,
