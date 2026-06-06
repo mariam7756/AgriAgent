@@ -65,11 +65,7 @@ class ProcessController(BaseController):
             for rec in file_content
         ]
         
-        # chunks = text_splitter.create_documents(
-        #     file_content_texts,
-        #     metadatas=file_content_metadata
-        # )
-        
+    
         chunks = self.process_simpler_splitter(
             texts=file_content_texts,
             metadatas=file_content_metadata,

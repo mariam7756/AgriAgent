@@ -69,7 +69,7 @@ async def submit_feedback(request: Request, payload: FeedbackRequest):
 
 @knowledge_router.delete("/reset/{project_id}")
 async def reset_knowledge(request: Request, project_id: int):
-    """احذف كل الـ knowledge records لمشروع معين"""
+    
     knowledge_model = await KnowledgeModel.create_instance(db_client=request.app.db_client)
     await knowledge_model.replace_project_records(project_id=project_id, records_payload=[])
     return JSONResponse(content={"signal": "knowledge_reset_success", "project_id": project_id})

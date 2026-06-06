@@ -46,10 +46,10 @@ class DataController(BaseController):
 
     def get_clean_file_name(self, orig_file_name: str):
 
-        # remove any special characters, except underscore and .
+        
         cleaned_file_name = re.sub(r'[^\w.]', '', orig_file_name.strip())
 
-        # replace spaces with underscore
+        
         cleaned_file_name = cleaned_file_name.replace(" ", "_")
 
         return cleaned_file_name

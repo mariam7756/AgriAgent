@@ -31,10 +31,9 @@ class KnowledgeController(BaseController):
         self.ontology = AgricultureOntology()
         self.faq_dataset = FAQDataset()
 
-    # ─────────────────────────────────────────────
+    
     # Classification & Routing
-    # ─────────────────────────────────────────────
-
+    
     def classify_message(self, text: str, current_crop: Optional[str] = None) -> Dict:
         classification = self.classifier.classify(text=text, current_crop=current_crop)
         intent = self.router.detect_intent(query=text, message=classification)
@@ -58,9 +57,9 @@ class KnowledgeController(BaseController):
         plan = get_fertilization_plan(crop_key=crop, area_feddan=area_feddan)
         return plan if plan.get("stages") else None
 
-    # ─────────────────────────────────────────────
+    
     # helpers
-    # ─────────────────────────────────────────────
+    
 
     async def _get_or_create_asset(
         self,
@@ -71,7 +70,7 @@ class KnowledgeController(BaseController):
         asset_config: dict,
         asset_type: str = AssetTypeEnum.FILE.value,
     ) -> Asset:
-        """يجيب asset موجود أو يعمل واحد جديد."""
+        
         existing = await asset_model.get_all_project_assets(
             asset_project_id=project_id,
             asset_type=asset_type,
@@ -100,7 +99,7 @@ class KnowledgeController(BaseController):
         asset_id: int,
         start_order: int = 1,
     ) -> List[DataChunk]:
-        """يحول records لـ DataChunk objects جاهزة للـ insert."""
+        
         chunks = []
         for i, item in enumerate(records):
             content = (item.get("content") or "").strip()
@@ -120,10 +119,7 @@ class KnowledgeController(BaseController):
             ))
         return chunks
 
-    # ─────────────────────────────────────────────
-    # Main ingest — يقبل seed + files + web
-    # ─────────────────────────────────────────────
-
+    
     async def ingest_sources(
         self,
         project_id: int,
@@ -152,13 +148,13 @@ class KnowledgeController(BaseController):
             "inserted_chunks": 0,
         }
 
-        # ── 1. SEED ──────────────────────────────
+        #SEED 
         if include_seed:
             seed_docs = get_seed_as_source_documents()
             all_source_documents.extend(seed_docs)
             stats["seed_docs"] = len(seed_docs)
 
-        # ── 2. FILES ─────────────────────────────
+        # FILES
         if include_files:
             
             process_controller = ProcessController(project_id=str(project_id))
@@ -166,7 +162,7 @@ class KnowledgeController(BaseController):
                 asset_project_id=project_id,
                 asset_type=AssetTypeEnum.FILE.value,
             )
-            # استثني الـ seed asset من الـ files
+            
             file_assets = [a for a in file_assets if a.asset_name != "seed-knowledge-eg"]
 
             for asset in file_assets:
@@ -191,7 +187,7 @@ class KnowledgeController(BaseController):
                 ))
                 stats["file_docs"] += 1
 
-        # ── 3. WEB (FAO) ──────────────────────────
+        #  WEB (FAO) 
         if include_web:
             try:
                 from .FAOCrawler import FAOCrawler
@@ -218,10 +214,10 @@ class KnowledgeController(BaseController):
             except Exception as e:
                 self.logger.warning(f"Web crawl failed (non-fatal): {e}")
 
-        # ── pipeline: extract → clean → normalize → tag → store ─────────
+        # pipeline: extract → clean → normalize → tag → store 
         stored_records = self.pipeline.run(source_documents=all_source_documents)
 
-        # ── knowledge_records ────────────────────
+        #knowledge_records 
         db_records = []
         for item in stored_records:
             source_rec = await knowledge_model.upsert_source(
@@ -254,8 +250,7 @@ class KnowledgeController(BaseController):
             records_payload=db_records,
         )
 
-        # ── chunks → vector DB ───────────────────
-        # عمل asset واحد للـ seed+web records
+        
         seed_asset = await self._get_or_create_asset(
             asset_model=asset_model,
             project_id=project_id,
@@ -264,10 +259,10 @@ class KnowledgeController(BaseController):
             asset_config={"source": "seed+web", "version": "1.0"},
         )
 
-        # امسح الـ chunks القديمة للـ seed asset
+        
         await chunk_model.delete_chunks_by_asset_id(asset_id=seed_asset.asset_id)
 
-        # seed + web records → chunks تحت الـ seed asset
+        
         non_file_records = [
             r for r in stored_records
             if not (r.get("metadata") or {}).get("asset_id")
@@ -278,7 +273,7 @@ class KnowledgeController(BaseController):
             asset_id=seed_asset.asset_id,
         )
 
-        # file records → chunks تحت asset_id بتاعهم
+        
         file_records = [
             r for r in stored_records
             if (r.get("metadata") or {}).get("asset_id")
@@ -305,11 +300,7 @@ class KnowledgeController(BaseController):
             "web_included": include_web,
             "files_included": include_files,
         }
-
-    # ─────────────────────────────────────────────
-    # Answer from knowledge store
-    # ─────────────────────────────────────────────
-
+        
     async def answer_from_knowledge_store(
         self,
         project_id: int,
@@ -324,7 +315,7 @@ class KnowledgeController(BaseController):
         message_type = flow["classification"]["message_type"]
         route = flow["route"]
 
-        # ردود فورية بدون LLM
+        
         if message_type in {"greeting", "small_talk", "out_of_scope"}:
             return {
                 "answer": flow["classification"]["response_template"],
@@ -333,7 +324,7 @@ class KnowledgeController(BaseController):
                 "flow": flow,
             }
 
-        # خطة تسميد من الـ ontology مباشرة
+        
         if route == "fertilization_plan":
             crop = (
                 flow["classification"].get("detected_crop")
@@ -352,19 +343,24 @@ class KnowledgeController(BaseController):
                     lines.append(
                         "\nملاحظة: الجرعات للتربة الطمية — التربة الرملية تحتاج زيادة 15-20%."
                     )
+                    def _clean_seed_answer(text: str) -> str:
+                        """يشيل prefix 'سؤال: ... إجابة: ' ويرجع الإجابة بس"""
+                        if "إجابة:" in text:
+                            return text.split("إجابة:")[-1].strip()
+                        return text
+
                     return {
-                        "answer": "\n".join(lines),
-                        "sources": [{"name": crop, "topic": "fertilization", "confidence": 0.95}],
-                        "mode": "ontology_plan",
-                        "plan": plan,
+                        "answer": _clean_seed_answer(facts[0]) if facts else "",
+                        "sources": sources,
+                        "mode": "knowledge_store_context",
                         "flow": flow,
                     }
 
-        # general_rag → اديه للـ RAG
+        
         if route == "general_rag":
             return None
 
-        # دور في الـ knowledge store
+        
         crop = (
             flow["classification"].get("detected_crop")
             or self._detect_crop_from_query(query)
@@ -402,10 +398,9 @@ class KnowledgeController(BaseController):
             "flow": flow,
         }
 
-    # ─────────────────────────────────────────────
+    
     # Private helpers
-    # ─────────────────────────────────────────────
-
+    
     def _detect_crop_from_query(self, text: str) -> Optional[str]:
         text_lower = (text or "").lower()
         for crop_key, data in AGRI_ONTOLOGY.items():

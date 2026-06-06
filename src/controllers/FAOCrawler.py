@@ -7,9 +7,9 @@ from typing import List, Dict, Optional
 logger = logging.getLogger("uvicorn.error")
 
 
-# ===== المصادر الحقيقية =====
+
 KNOWLEDGE_SOURCES = [
-    # FAO — مقالات تقنية عن محاصيل مصر، نص HTML كامل
+   
     "https://www.fao.org/4/v9978e/v9978e0e.htm",        # Egypt crops overview
     "https://www.fao.org/4/v9978e/v9978e0f.htm",        # Pest management Egypt
     "https://www.fao.org/4/v9978e/v9978e0g.htm",        # Soil & irrigation Egypt
@@ -20,12 +20,12 @@ KNOWLEDGE_SOURCES = [
     "https://www.fao.org/4/t0217e/t0217e00.htm",        # Maize production guide
     "https://www.fao.org/4/w3727e/w3727e00.htm",        # Rice production guide
     "https://www.fao.org/4/y5031e/y5031e00.htm",        # Soil fertility management
-    # UMN Extension — نص كامل، أمراض + آفات
+    
     "https://extension.umn.edu/crop-production",
     "https://extension.umn.edu/plant-diseases",
     "https://extension.umn.edu/nutrient-management",
     "https://extension.umn.edu/soil-management",
-    # IPM — مكافحة آفات تفصيلية
+    
     "https://ipm.ucanr.edu/agriculture.html",
 ]
 
@@ -57,7 +57,7 @@ class FAOCrawler:
         }
 
     async def fetch_all_sources(self, max_per_source: int = 5) -> List[Dict]:
-        """الدالة الرئيسية — تجيب محتوى من كل المصادر"""
+        
         all_docs = []
         async with httpx.AsyncClient(
             headers=self.headers,
@@ -77,19 +77,19 @@ class FAOCrawler:
         return all_docs
 
     async def _crawl_url(self, client: httpx.AsyncClient, url: str) -> List[Dict]:
-        """يجيب محتوى URL واحد ويقسمه لـ chunks نظيفة"""
+        
         resp = await client.get(url, timeout=20)
         if resp.status_code != 200:
             return []
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # احذف العناصر الزائدة
+        
         for tag in soup(["script", "style", "nav", "footer",
                          "header", "aside", "form", "iframe"]):
             tag.decompose()
 
-        # جيب العنوان
+        
         title = ""
         h1 = soup.find("h1")
         if h1:
@@ -97,7 +97,7 @@ class FAOCrawler:
         elif soup.find("title"):
             title = soup.find("title").get_text(strip=True)
 
-        # جيب المحتوى
+        
         main = (
             soup.find("article") or
             soup.find("main") or
@@ -114,8 +114,8 @@ class FAOCrawler:
     def _split_to_chunks(
         self, text: str, source_url: str, title: str, chunk_size: int = 800
     ) -> List[Dict]:
-        """يقسم النص لـ chunks نظيفة قابلة للـ embedding"""
-        # نظف السطور
+        
+        
         lines = [l.strip() for l in text.splitlines()]
         clean_lines = []
         for line in lines:
@@ -130,17 +130,17 @@ class FAOCrawler:
 
         clean_text = "\n".join(clean_lines)
 
-        # تأكد إن المحتوى زراعي
+        
         text_lower = clean_text.lower()
         if not any(kw in text_lower for kw in AGRI_KEYWORDS):
             return []
 
-        # قسم لـ chunks بـ 800 حرف مع overlap
+        
         chunks = []
         words = clean_text.split()
-        chunk_words = chunk_size // 6  # ~6 chars per word average
+        chunk_words = chunk_size // 6  
 
-        for i in range(0, len(words), chunk_words - 50):  # 50 word overlap
+        for i in range(0, len(words), chunk_words - 50):  
             chunk = " ".join(words[i: i + chunk_words])
             if len(chunk) < 200:
                 continue
