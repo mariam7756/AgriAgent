@@ -8,4 +8,5 @@ class SearchRequest(BaseModel):
     text: str
     limit: Optional[int] = 3
     current_crop: Optional[str] = None
+    session_id: Optional[str] = None
     

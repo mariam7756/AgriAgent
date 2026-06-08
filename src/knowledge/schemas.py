@@ -12,6 +12,7 @@ class MessageType(str, Enum):
     AGRICULTURE_PROBLEM = "agriculture_problem"
     FOLLOW_UP = "follow_up"
     OUT_OF_SCOPE = "out_of_scope"
+    GENERAL_CHAT = "general_chat"
 
 
 class SourceDocument(BaseModel):
@@ -47,7 +48,7 @@ class MessageClassificationResult(BaseModel):
     confidence: float
     detected_crop: Optional[str] = None
     intent_hint: Optional[str] = None
-    response_template: str
+    response_template: Optional[str] = None
 
 
 class QueryIntentResult(BaseModel):
