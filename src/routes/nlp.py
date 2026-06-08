@@ -6,6 +6,7 @@ from models.ChunkModel import ChunkModel
 from controllers import NLPController
 from controllers import KnowledgeController
 from models import ResponseSignal
+from knowledge.conversation_memory import get_memory
 
 
 import logging
@@ -156,63 +157,94 @@ async def search_index(request: Request, project_id: int, search_request: Search
 
 @nlp_router.post("/index/answer/{project_id}")
 async def answer_rag(request: Request, project_id: int, search_request: SearchRequest):
-    
-    project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
+
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create_one(project_id=project_id)
+
+    # ── Persistent Conversation Memory ───────────────────────────────────
+    from knowledge.conversation_memory import get_memory
+    session_key = search_request.session_id or f"project_{project_id}_default"
+    memory = await get_memory(
+        db_client=request.app.db_client,
+        session_key=session_key,
+        project_id=project_id,
+    )
+    current_crop = (
+        search_request.current_crop
+        or await memory.get_current_crop()
+        or await memory.resolve_crop_from_context(search_request.text)
+    )
+    memory_state = await memory.get_state()
+
+    # ── Knowledge Store (ontology / fertilization / direct answers) ───────
+    knowledge_controller = KnowledgeController(db_client=request.app.db_client)
+    knowledge_answer = await knowledge_controller.answer_from_knowledge_store(
+        project_id=project.project_id,
+        query=search_request.text,
+        current_crop=current_crop,
+        limit=min(search_request.limit or 3, 3),
     )
 
-    project = await project_model.get_project_or_create_one(
-        project_id=project_id
-    )
+    if knowledge_answer is not None:
+        detected_crop = (
+            knowledge_answer.get("flow", {})
+            .get("classification", {})
+            .get("detected_crop") or current_crop
+        )
+        await memory.add_turn(
+            role="user",
+            content=search_request.text,
+            crop=detected_crop,
+            topic=knowledge_answer.get("flow", {}).get("intent", {}).get("topic"),
+        )
+        await memory.add_turn(role="assistant", content=knowledge_answer["answer"])
 
+        return JSONResponse(content={
+            "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
+            "answer": knowledge_answer["answer"],
+            "sources": knowledge_answer.get("sources", []),
+            "flow": knowledge_answer.get("flow", {}),
+            "answer_mode": knowledge_answer.get("mode", "knowledge_store"),
+            "full_prompt": None,
+            "chat_history": [],
+            "session_state": await memory.to_dict(),
+        })
+
+    # ── RAG ───────────────────────────────────────────────────────────────
     nlp_controller = NLPController(
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
         template_parser=request.app.template_parser,
     )
-    
-    knowledge_controller = KnowledgeController(db_client=request.app.db_client)
-    knowledge_answer = await knowledge_controller.answer_from_knowledge_store(
-        project_id=project.project_id,
-        query=search_request.text,
-        current_crop=search_request.current_crop,
-        limit=min(search_request.limit or 3, 3),
-    )
-    if knowledge_answer is not None:
-        return JSONResponse(
-            content={
-                "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-                "answer": knowledge_answer["answer"],
-                "sources": knowledge_answer.get("sources", []),
-                "flow": knowledge_answer.get("flow", {}),
-                "answer_mode": knowledge_answer.get("mode", "knowledge_store"),
-                "full_prompt": None,
-                "chat_history": [],
-            }
-        )
-    
 
     answer, full_prompt, chat_history, sources = await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=min(search_request.limit or 3, 3),
+        current_crop=current_crop,
+        memory_state=memory_state,
     )
-    
+
     if not answer:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"signal": ResponseSignal.RAG_ANSWER_ERROR.value},
         )
-        
-    return JSONResponse(
-        content={
-            "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-            "answer": answer,
-            "sources": sources,
-            "answer_mode": "rag",
-            "full_prompt": full_prompt,
-            "chat_history": chat_history
-        }
+
+    await memory.add_turn(
+        role="user",
+        content=search_request.text,
+        crop=current_crop,
     )
-    
+    await memory.add_turn(role="assistant", content=answer)
+
+    return JSONResponse(content={
+        "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
+        "answer": answer,
+        "sources": sources,
+        "answer_mode": "rag",
+        "full_prompt": full_prompt,
+        "chat_history": chat_history,
+        "session_state": await memory.to_dict(),
+    })
