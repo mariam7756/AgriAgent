@@ -315,16 +315,12 @@ class KnowledgeController(BaseController):
         message_type = flow["classification"]["message_type"]
         route = flow["route"]
 
-        
-        if message_type in {"greeting", "small_talk", "out_of_scope"}:
-            return {
-                "answer": flow["classification"]["response_template"],
-                "sources": [],
-                "mode": "direct_response",
-                "flow": flow,
-            }
+        # general_chat → مش بنرد هنا، بنبعته للـ LLM في nlp.py
+        # الـ LLM هيرد بشكل طبيعي على التحية أو الكلام العادي
+        if message_type == "general_chat":
+            return None
 
-        
+        # خطة تسميد من الـ ontology مباشرة
         if route == "fertilization_plan":
             crop = (
                 flow["classification"].get("detected_crop")
@@ -343,24 +339,20 @@ class KnowledgeController(BaseController):
                     lines.append(
                         "\nملاحظة: الجرعات للتربة الطمية — التربة الرملية تحتاج زيادة 15-20%."
                     )
-                    def _clean_seed_answer(text: str) -> str:
-                        """يشيل prefix 'سؤال: ... إجابة: ' ويرجع الإجابة بس"""
-                        if "إجابة:" in text:
-                            return text.split("إجابة:")[-1].strip()
-                        return text
-
+                    
                     return {
-                        "answer": _clean_seed_answer(facts[0]) if facts else "",
-                        "sources": sources,
-                        "mode": "knowledge_store_context",
+                        "answer": "\n".join(lines),
+                        "sources": [{"name": crop, "topic": "fertilization", "confidence": 0.95}],
+                        "mode": "ontology_plan",
+                        "plan": plan,
                         "flow": flow,
                     }
 
-        
+        # general_rag → اديه للـ RAG
         if route == "general_rag":
             return None
 
-        
+        # دور في الـ knowledge store
         crop = (
             flow["classification"].get("detected_crop")
             or self._detect_crop_from_query(query)
@@ -369,7 +361,7 @@ class KnowledgeController(BaseController):
         topic = flow["intent"].get("topic", "general")
         
         knowledge_model = await KnowledgeModel.create_instance(db_client=self.db_client)
-
+        
 
         records = await knowledge_model.get_records(
             project_id=project_id, name=crop, topic=topic, limit=limit,
@@ -383,16 +375,29 @@ class KnowledgeController(BaseController):
         if not records:
             return None
 
-        facts = [(rec.content or "")[:300] for rec in records if rec.content]
+        # نظف المحتوى — شيل الـ "سؤال: ... إجابة: ..." prefix
+        def clean_content(text: str) -> str:
+            if "إجابة:" in text:
+                return text.split("إجابة:")[-1].strip()
+            if "سؤال:" in text:
+                parts = text.split("سؤال:")
+                return parts[-1].strip() if len(parts) > 1 else text
+            return text
+
+        facts = [clean_content(rec.content or "")[:400] for rec in records if rec.content]
         sources = [
-            {"record_id": rec.record_id, "name": rec.name,
-             "topic": rec.topic, "confidence": rec.confidence}
+            {
+                "record_id": rec.record_id,
+                "name": rec.name,
+                "topic": rec.topic,
+                "confidence": rec.confidence,
+            }
             for rec in records
         ]
         
 
         return {
-            "answer": "\n\n".join(facts[:4]),
+            "answer": "\n\n".join(facts[:3]),
             "sources": sources,
             "mode": "knowledge_store_context",
             "flow": flow,
