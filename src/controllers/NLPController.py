@@ -3,7 +3,7 @@ from models.db_schemes import Project, DataChunk
 from stores.llm.LLMEnums import DocumentTypeEnum
 from stores.llm.LLMEnums import DocumentTypeEnum
 from helpers.retrieval import rerank_documents, build_source_citation
-from typing import List
+from typing import List, Optional
 import json
 
 
@@ -143,7 +143,17 @@ class NLPController(BaseController):
         hits = sum(1 for t in query_tokens if t.lower() in joined_context)
         return hits > 0 or top_score >= 0.55
     
-    async def answer_rag_question(self, project: Project, query: str, limit: int = 3):
+   
+    async def answer_rag_question(
+        
+        
+        self,
+        project: Project,
+        query: str,
+        limit: int = 3,
+        current_crop: Optional[str] = None,
+        memory_state: Optional[dict] = None,
+        ):
         answer, context_text, chat_history, sources = None, None, None, []
 
         retrieved_documents = await self.search_vector_db_collection(
@@ -192,18 +202,24 @@ class NLPController(BaseController):
             except (KeyError, ValueError):
                 footer_text = f"سؤال المزارع: {query}\nرد عملي ومباشر زي خبير في الحقل."
 
-        chat_history = [
-            {
-                "role": "system",
-                "content": system_prompt.template if hasattr(system_prompt, 'template') else str(system_prompt) if system_prompt else " مساعد زراعي مصري خبير عملي، بتتكلم بلغة المزارع المصري.",
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"معلومات زراعية من المصادر:\n{clean_context}\n\n---\n{footer_text}"
-                ),
-            },
-        ]
+        system_content = (
+            system_prompt.template
+            if hasattr(system_prompt, "template")
+            else str(system_prompt)
+            if system_prompt
+            else "أنت مساعد زراعي مصري خبير عملي، بتتكلم بلغة المزارع المصري."
+        )
+
+        recent_turns = []
+        if memory_state:
+            recent_turns = memory_state.get("recent_turns", [])
+
+        chat_history = [{"role": "system", "content": system_content}]
+        chat_history.extend(recent_turns[-4:] if len(recent_turns) > 4 else recent_turns)
+        chat_history.append({
+            "role": "user",
+            "content": f"معلومات زراعية من المصادر:\n{clean_context}\n\n---\n{footer_text}"
+        })
 
         answer = self.generation_client.generate_text(chat_history=chat_history)
 
