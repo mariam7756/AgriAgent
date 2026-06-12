@@ -166,6 +166,8 @@ class KnowledgeController(BaseController):
             file_assets = [a for a in file_assets if a.asset_name != "seed-knowledge-eg"]
 
             for asset in file_assets:
+                if asset.asset_name == "seed-knowledge-eg":
+                    continue
                 file_content = process_controller.get_file_content(file_id=asset.asset_name)
                 if not file_content:
                     continue

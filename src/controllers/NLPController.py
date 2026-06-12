@@ -4,6 +4,7 @@ from stores.llm.LLMEnums import DocumentTypeEnum
 from stores.llm.LLMEnums import DocumentTypeEnum
 from helpers.retrieval import rerank_documents, build_source_citation
 from typing import List, Optional
+from knowledge.classifier import MessageClassifier
 import json
 
 
@@ -153,74 +154,78 @@ class NLPController(BaseController):
         limit: int = 3,
         current_crop: Optional[str] = None,
         memory_state: Optional[dict] = None,
-        ):
+    ):
         answer, context_text, chat_history, sources = None, None, None, []
 
-        retrieved_documents = await self.search_vector_db_collection(
-            project=project,
-            text=query,
-            limit=limit,
-            
-        )
-        
-        if not retrieved_documents:
-            return answer, context_text, chat_history, sources
-        
-        context_blocks = []
-            
-        for doc in retrieved_documents:
-            citation = build_source_citation(doc.metadata)
-            context_blocks.append(f"[{citation}]\n{doc.text}")
-            sources.append({
-                "title": (doc.metadata or {}).get("title"),
-                "source_url": (doc.metadata or {}).get("source_url"),
-                "category": (doc.metadata or {}).get("category"),
-                "author": (doc.metadata or {}).get("author"),
-                "score": doc.score,
-                "vector_score": doc.vector_score,
-                "metadata_score": doc.metadata_score,
-            })
-        context_text = "\n---\n".join(context_blocks)
-
-        # فلتري الـ noise قبل ما يوصل للـ LLM
-        NOISE = {"تنزيل الكتاب", "تحميل الكتاب", "download", "اضغط هنا", "-----"}
-        clean_blocks = [
-            b for b in context_blocks
-            if len(b.strip()) > 80 and not any(n in b for n in NOISE)
-        ]
-        clean_context = "\n---\n".join(clean_blocks) if clean_blocks else (
-            "لا يوجد سياق زراعي كافٍ — أجب من خبرتك الزراعية العامة."
-        )
+        memory_state = memory_state or {}
+        recent_turns = memory_state.get("recent_turns", [])
 
         system_prompt = self.template_parser.get("rag", "system_prompt")
-        footer_prompt = self.template_parser.get("rag", "footer_prompt")
-
-        footer_text = f"سؤال المزارع: {query}\nرد عملي ومباشر زي خبير في الحقل."
-        if footer_prompt:
-            try:
-                footer_text = footer_prompt.substitute(query=query)
-            except (KeyError, ValueError):
-                footer_text = f"سؤال المزارع: {query}\nرد عملي ومباشر زي خبير في الحقل."
-
         system_content = (
             system_prompt.template
             if hasattr(system_prompt, "template")
-            else str(system_prompt)
-            if system_prompt
-            else "أنت مساعد زراعي مصري خبير عملي، بتتكلم بلغة المزارع المصري."
+            else str(system_prompt) if system_prompt
+            else "أنت خضر — مهندس زراعي مصري خبير."
         )
 
-        recent_turns = []
-        if memory_state:
-            recent_turns = memory_state.get("recent_turns", [])
+        # ── Classify: هل السؤال زراعي؟ ──────────────────────────────────────
+        
+        classifier = MessageClassifier()
+        classification = classifier.classify(text=query, current_crop=current_crop)
+        is_agri = classification.message_type not in ("general_chat",)
 
+        # ── Retrieval — بس لو السؤال زراعي ───────────────────────────────────
+        clean_context = "لا يوجد سياق زراعي محدد — أجب من خبرتك الزراعية العامة."
+
+        if is_agri:
+            retrieved_documents = await self.search_vector_db_collection(
+                project=project,
+                text=query,
+                limit=limit,
+            )
+
+            NOISE = {"تنزيل الكتاب", "تحميل الكتاب", "download", "اضغط هنا", "-----"}
+            context_blocks = []
+
+            for doc in (retrieved_documents or []):
+                text = doc.text or ""
+                if len(text.strip()) < 60 or any(n in text for n in NOISE):
+                    continue
+                citation = build_source_citation(doc.metadata)
+                context_blocks.append(f"[{citation}]\n{text}")
+                sources.append({
+                    "title": (doc.metadata or {}).get("title"),
+                    "source_url": (doc.metadata or {}).get("source_url"),
+                    "category": (doc.metadata or {}).get("category"),
+                    "author": (doc.metadata or {}).get("author"),
+                    "score": doc.score,
+                    "vector_score": doc.vector_score,
+                    "metadata_score": doc.metadata_score,
+                })
+
+            context_text = "\n---\n".join(context_blocks)
+
+            # تأكد إن الـ context ذي صلة بالسؤال
+            if context_blocks and self._is_context_relevant(query, retrieved_documents or []):
+                clean_context = context_text
+            # لو الـ context مش ذي صلة — خليه يجاوب من خبرته
+
+        # ── Build chat history ────────────────────────────────────────────────
         chat_history = [{"role": "system", "content": system_content}]
-        chat_history.extend(recent_turns[-4:] if len(recent_turns) > 4 else recent_turns)
+        chat_history.extend(
+            recent_turns[-4:] if len(recent_turns) > 4 else recent_turns
+        )
         chat_history.append({
             "role": "user",
-            "content": f"معلومات زراعية من المصادر:\n{clean_context}\n\n---\n{footer_text}"
+            "content": (
+                f"المعلومات المتاحة:\n{clean_context}\n\n"
+                f"---\n"
+                f"رسالة المستخدم: {query}\n\n"
+                f"رد بشكل طبيعي كخبير زراعي مصري."
+            ),
         })
 
+        # ── Generate ──────────────────────────────────────────────────────────
         answer = self.generation_client.generate_text(chat_history=chat_history)
 
         if answer:
@@ -229,10 +234,11 @@ class NLPController(BaseController):
                 .replace("المستند رقم", "")
                 .replace("بناءً على البيانات", "")
                 .replace("بناءً على المستندات", "")
+                .replace("وفقاً للسياق", "")
                 .replace("بالطبع،", "")
                 .strip()
             )
-
+            
 
         return answer, context_text, chat_history, sources
     

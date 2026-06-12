@@ -18,6 +18,48 @@ nlp_router = APIRouter(
     tags=["api_v1", "nlp"],
 )
 
+@nlp_router.post("/index/reset/{project_id}")
+async def reset_project_index(request: Request, project_id: int):
+    """
+    يعمل cleanup كامل وآمن:
+    1. يحذف الـ vector collection
+    2. يمسح جدول chunks في Postgres
+    المكافئ الآمن لـ TRUNCATE اليدوي — استخدمه قبل إعادة الـ push.
+    """
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    chunk_model   = await ChunkModel.create_instance(db_client=request.app.db_client)
+
+    project = await project_model.get_project_or_create_one(project_id=project_id)
+    if not project:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"signal": ResponseSignal.PROJECT_NOT_FOUND_ERROR.value},
+        )
+
+    nlp_controller = NLPController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        template_parser=request.app.template_parser,
+    )
+
+    # 1) احذف الـ vector collection
+    await nlp_controller.reset_vector_db_collection(project=project)
+
+    # 2) احذف الـ chunks من Postgres
+    deleted_count = await chunk_model.delete_chunks_by_project_id(
+        project_id=project_id
+    )
+
+    logger.info(f"Reset project {project_id}: deleted {deleted_count} chunks + vector collection.")
+
+    return JSONResponse(content={
+        "signal": "INDEX_RESET_SUCCESS",
+        "deleted_chunks": deleted_count,
+        "message": f"تم مسح {deleted_count} chunk والـ vector collection. جاهز لـ push جديد.",
+    })
+
+
 @nlp_router.post("/index/push/{project_id}")
 async def index_project(request: Request, project_id: int, push_request: PushRequest):
 

@@ -81,6 +81,27 @@ HEADING_PATTERNS = re.compile(
     re.MULTILINE | re.IGNORECASE,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# كشف النص العربي المكسور (garbage text من PDFs سيئة الـ encoding)
+# Arabic Presentation Forms: U+FB50–U+FDFF و U+FE70–U+FEFF
+# لو نسبتها > 40% من الحروف العربية → garbage
+# ─────────────────────────────────────────────────────────────────────────────
+_ARABIC_PRES_FORMS = re.compile(r"[\uFB50-\uFDFF\uFE70-\uFEFF]")
+_NORMAL_ARABIC     = re.compile(r"[\u0600-\u06FF]")
+
+
+def _is_garbage_text(text: str) -> bool:
+    """
+    يكشف لو النص عربي مكسور (Arabic Presentation Forms بدل Unicode العادي).
+    الـ PDFs السيئة بتحول النص لـ presentation forms — بيبان كـ 'ﻔـﻞ ﻋﻠـﻰ'.
+    """
+    pres_count   = len(_ARABIC_PRES_FORMS.findall(text))
+    normal_count = len(_NORMAL_ARABIC.findall(text))
+    total_arabic = pres_count + normal_count
+    if total_arabic < 5:
+        return False
+    return (pres_count / total_arabic) > 0.40
+
 
 def _infer_crop_from_text(text: str) -> str:
     text_lower = text.lower()
@@ -212,6 +233,10 @@ class ProcessController(BaseController):
                     cleaned_lines.append("")
                 continue
 
+            # تجاهل النص المكسور (Arabic Presentation Forms)
+            if _is_garbage_text(stripped):
+                continue
+
             # تطبيق patterns الـ noise
             is_noise = False
             for pattern in NOISE_PATTERNS:
@@ -252,6 +277,18 @@ class ProcessController(BaseController):
 
         # تنظيف النص
         cleaned_text = self.clean_pdf_text(full_text)
+
+        # تحذير لو الـ PDF كان مكسور encoding وتم تجاهل جزء كبير منه
+        original_len = len(full_text.strip())
+        cleaned_len  = len(cleaned_text.strip())
+        if original_len > 500 and cleaned_len < original_len * 0.20:
+            import logging
+            logging.getLogger("uvicorn.error").warning(
+                f"⚠️  [{file_id}] النص بعد التنظيف أقل من 20% من الأصلي "
+                f"({cleaned_len}/{original_len} حرف). "
+                f"على الأغلب الـ PDF فيه encoding مكسور — "
+                f"جرب تحوّله لـ PDF/A أو استخدم أداة مثل pdftotext مع -raw."
+            )
 
         if not cleaned_text.strip():
             return []
