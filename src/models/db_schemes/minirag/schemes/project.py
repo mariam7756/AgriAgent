@@ -44,6 +44,8 @@ class ConversationSession(SQLAlchemyBase):
     area_feddan = Column(String, nullable=True, default="1.0")
 
     
+    collected_slots = Column(JSONB, nullable=True, default=dict)
+
     turns = Column(JSONB, nullable=True, default=list)
 
     created_at = Column(

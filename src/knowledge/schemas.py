@@ -58,3 +58,6 @@ class QueryIntentResult(BaseModel):
     pest: Optional[str] = None
     topic: Optional[str] = None
     needs_memory: bool = False
+    
+    style: Optional[str] = None
+    

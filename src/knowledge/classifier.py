@@ -25,6 +25,14 @@ FERTILIZATION_PLAN_HINTS = {
     "fertilization plan", "fertilizer schedule",
 }
 
+# رسائل قصيرة بترد على سؤال البوت السابق — نفي أو استكمال — لازم الأولوية القصوى
+# عشان متتلغيش بغلط بكلمة زراعية موجودة صدفة في نفس الجملة (زي "لا مش نظام ري")
+NEGATION_WORDS = {"لا", "لأ", "لالا", "مش", "معرفش"}
+NEGATION_PHRASES = {"مش عارف", "مش عارفة", "مش قصدي"}
+CONTINUATION_WORDS = {"طب", "كمل", "تمام", "أه", "اه", "أيوه", "ايوه", "ماشي"}
+CONTINUATION_PHRASES = {"تمام كده"}
+SHORT_REPLY_MAX_WORDS = 5
+
 
 
 
@@ -47,6 +55,7 @@ class MessageClassifier:
 
         normalized = (text or "").strip()
         normalized_lower = normalized.lower()
+        words = [w for w in normalized_lower.replace("؟", " ").replace("!", " ").split() if w]
 
         if not normalized:
             return MessageClassificationResult(
@@ -57,7 +66,20 @@ class MessageClassifier:
             )
 
         detected_crop = self._detect_crop(normalized_lower) or current_crop
-        
+
+        # ── أولوية قصوى: رد قصير فيه نفي/استكمال → follow_up دايماً ─────────
+        # لازم تتشيك قبل أي كلمة زراعية، عشان "لا مش حاجة نظام ري" ماتتصنفش
+        # كسؤال زراعي جديد بس لوجود كلمة "ري" فيها.
+        if len(words) <= SHORT_REPLY_MAX_WORDS and (
+            any(w in NEGATION_WORDS or w in CONTINUATION_WORDS for w in words)
+            or any(p in normalized_lower for p in NEGATION_PHRASES | CONTINUATION_PHRASES)
+        ):
+            return MessageClassificationResult(
+                message_type=MessageType.FOLLOW_UP,
+                confidence=0.85,
+                detected_crop=detected_crop,
+                intent_hint="negation_or_continuation",
+            )
 
         # خطة تسميد مطلوبة صراحة → ontology
         if any(h in normalized_lower for h in FERTILIZATION_PLAN_HINTS):

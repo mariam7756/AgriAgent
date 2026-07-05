@@ -204,7 +204,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     # ── Persistent Conversation Memory ───────────────────────────────────
-    from knowledge.conversation_memory import get_memory
+    from knowledge.conversation_memory import get_memory, extract_slots_from_text
     session_key = search_request.session_id or f"project_{project_id}_default"
     memory = await get_memory(
         db_client=request.app.db_client,
@@ -218,6 +218,9 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
     )
     memory_state = await memory.get_state()
 
+    # استخرج أي تفاصيل ذكرها المستخدم عرضًا (مكان/شمس/تربة/ري) عشان مانسألوش عنها تاني
+    new_slots = extract_slots_from_text(search_request.text)
+
     # ── Knowledge Store (ontology / fertilization / direct answers) ───────
     knowledge_controller = KnowledgeController(db_client=request.app.db_client)
     knowledge_answer = await knowledge_controller.answer_from_knowledge_store(
@@ -227,7 +230,8 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         limit=min(search_request.limit or 3, 3),
     )
 
-    if knowledge_answer is not None:
+    # رد نهائي جاهز فعلاً (زي خطة التسميد الرقمية) — يترجع مباشرة من غير ما يعدي على الموديل
+    if knowledge_answer is not None and knowledge_answer.get("is_final_answer"):
         detected_crop = (
             knowledge_answer.get("flow", {})
             .get("classification", {})
@@ -238,6 +242,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
             content=search_request.text,
             crop=detected_crop,
             topic=knowledge_answer.get("flow", {}).get("intent", {}).get("topic"),
+            new_slots=new_slots,
         )
         await memory.add_turn(role="assistant", content=knowledge_answer["answer"])
 
@@ -252,7 +257,15 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
             "session_state": await memory.to_dict(),
         })
 
-    # ── RAG ───────────────────────────────────────────────────────────────
+    # سياق خام من الـ knowledge store (مش رد نهائي) — يتبعت للموديل يصيغه بدل ما يترجع زي ما هو،
+    # عشان نضمن صوت/شخصية ثابتة وردود مبنية على المحادثة مش فقرات جاهزة مكررة.
+    preloaded_context = (
+        knowledge_answer["answer"]
+        if knowledge_answer is not None and knowledge_answer.get("mode") == "knowledge_store_context"
+        else None
+    )
+
+    # ── RAG / LLM (مسار موحّد لكل الردود غير الرقمية) ─────────────────────
     nlp_controller = NLPController(
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
@@ -266,6 +279,7 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         limit=min(search_request.limit or 3, 3),
         current_crop=current_crop,
         memory_state=memory_state,
+        preloaded_context=preloaded_context,
     )
 
     if not answer:
@@ -274,10 +288,19 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
             content={"signal": ResponseSignal.RAG_ANSWER_ERROR.value},
         )
 
+    detected_crop = None
+    if knowledge_answer is not None:
+        detected_crop = (
+            knowledge_answer.get("flow", {})
+            .get("classification", {})
+            .get("detected_crop")
+        )
+
     await memory.add_turn(
         role="user",
         content=search_request.text,
-        crop=current_crop,
+        crop=detected_crop or current_crop,
+        new_slots=new_slots,
     )
     await memory.add_turn(role="assistant", content=answer)
 
@@ -285,8 +308,9 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
         "answer": answer,
         "sources": sources,
-        "answer_mode": "rag",
+        "answer_mode": "rag" if not preloaded_context else "knowledge_store_via_llm",
         "full_prompt": full_prompt,
         "chat_history": chat_history,
         "session_state": await memory.to_dict(),
     })
+    

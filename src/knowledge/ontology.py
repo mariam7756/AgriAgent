@@ -122,6 +122,17 @@ AGRI_ONTOLOGY: Dict[str, Dict] = {
         },
         "irrigation_days": 10, "planting_months": [2, 3],
     },
+    "mint": {
+        "ar_names": ["نعناع", "النعناع"],
+        "season": ["perennial", "summer"], "egypt_regions": ["all"],
+        "diseases": ["powdery_mildew", "rust", "root_rot"],
+        "pests": ["aphid", "spider_mite", "mint_flea_beetle"],
+        "fertilization": {
+            "pre_planting": {"name": "سماد عضوي (كمبوست)", "dose_kg_feddan": 2000},
+            "vegetative":   {"name": "يوريا",               "dose_kg_feddan": 25},
+        },
+        "irrigation_days": 1, "planting_months": [3, 4, 9, 10],
+    },
 }
 
 
@@ -181,3 +192,4 @@ def get_fertilization_plan(crop_key: str, area_feddan: float = 1.0) -> Dict:
             for stage, info in crop.get("fertilization", {}).items()
         ],
     }
+    

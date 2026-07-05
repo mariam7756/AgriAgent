@@ -1,7 +1,5 @@
-"""
-Conversation Memory — Postgres Backed
-بيحل مشكلة _MEMORY_STORE = {} اللي بيتمسح مع كل server restart.
-"""
+
+import re
 from typing import Dict, List, Optional
 from sqlalchemy.future import select
 from sqlalchemy import update
@@ -9,6 +7,49 @@ from models.db_schemes.minirag.schemes.project import ConversationSession
 
 
 MAX_TURNS = 10
+MAX_HISTORY_TO_MODEL = 6  # آخر 6 رسائل (3 دورات) بتتبعت فعليًا للـ LLM
+
+
+# ── Slot extraction: قواعد بسيطة تستخرج تفاصيل ذكرها المستخدم عرضًا ──────────
+_SLOT_PATTERNS = {
+    "location": [
+        (r"قدام (?:ال)?بيت", "قدام البيت"),
+        (r"جنب (?:ال)?بيت", "جنب البيت"),
+        (r"(?:في|فى) (?:ال)?حديقة", "في الحديقة"),
+        (r"(?:في|فى) (?:ال)?أرض|(?:في|فى) (?:ال)?ارض", "في الأرض المكشوفة"),
+        (r"(?:في|فى) (?:ال)?شرفة|(?:في|فى) (?:ال)?بلكونة", "في الشرفة"),
+        (r"(?:في|فى) (?:ال)?أصيص|(?:في|فى) (?:ال)?اصيص", "في أصيص"),
+    ],
+    "sun_exposure": [
+        (r"مشمس", "مشمسة"),
+        (r"شمس (?:طول|كل)? ?اليوم", "شمس طول اليوم"),
+        (r"مفيهاش شمس|من غير شمس|ضل طول اليوم", "مفيهاش شمس كافية"),
+    ],
+    "watering_frequency": [
+        (r"كل يوم|يوميًا|يوميا", "يومي"),
+        (r"يوم بعد يوم|كل يومين", "كل يومين"),
+        (r"مرتين? (?:في|فى) الأسبوع|مرتين (?:في|فى) الاسبوع", "مرتين أسبوعيًا"),
+        (r"مرة (?:في|فى) الأسبوع|مرة (?:في|فى) الاسبوع", "مرة أسبوعيًا"),
+    ],
+    "soil_type": [
+        (r"تربة رملية|رملي", "رملية"),
+        (r"تربة طينية|طيني", "طينية"),
+        (r"تربة صفراء", "صفراء"),
+    ],
+}
+
+
+def extract_slots_from_text(text: str) -> Dict[str, str]:
+    """بيدور على تفاصيل زي المكان/الشمس/الري/التربة في كلام المستخدم العادي،
+    من غير ما يحتاج المستخدم يجاوب على سؤال محدد بصيغة معينة."""
+    text_lower = (text or "").lower()
+    found: Dict[str, str] = {}
+    for slot_name, patterns in _SLOT_PATTERNS.items():
+        for pattern, normalized_value in patterns:
+            if re.search(pattern, text_lower):
+                found[slot_name] = normalized_value
+                break
+    return found
 
 
 class PersistentConversationMemory:
@@ -40,6 +81,7 @@ class PersistentConversationMemory:
                     session_key=self.session_key,
                     project_id=self.project_id,
                     turns=[],
+                    collected_slots={},
                 )
                 session.add(record)
                 await session.commit()
@@ -49,22 +91,31 @@ class PersistentConversationMemory:
 
     async def get_state(self) -> Dict:
         await self._load()
+        turns = self._record.turns or []
         return {
             "current_crop": self._record.current_crop,
             "growth_stage": self._record.growth_stage,
             "last_topic": self._record.last_topic,
             "last_problem": self._record.last_problem,
             "area_feddan": float(self._record.area_feddan or 1.0),
+            # الحقل اللي كان ناقص وبيخلي البوت "ينسى" كل حاجة كل رسالة
+            "recent_turns": turns[-MAX_HISTORY_TO_MODEL:],
+            "is_first_message": len(turns) == 0,
+            "collected_slots": dict(self._record.collected_slots or {}),
         }
 
     async def get_current_crop(self) -> Optional[str]:
         await self._load()
         return self._record.current_crop
 
-    async def get_recent_turns(self, n: int = 4) -> List[Dict]:
+    async def get_recent_turns(self, n: int = MAX_HISTORY_TO_MODEL) -> List[Dict]:
         await self._load()
         turns = self._record.turns or []
         return turns[-n:]
+
+    async def get_collected_slots(self) -> Dict:
+        await self._load()
+        return dict(self._record.collected_slots or {})
 
     async def resolve_crop_from_context(self, query: str) -> Optional[str]:
         """لو الـ query مش فيه محصول، يرجع المحصول من الـ memory."""
@@ -84,6 +135,7 @@ class PersistentConversationMemory:
         crop: Optional[str] = None,
         topic: Optional[str] = None,
         problem: Optional[str] = None,
+        new_slots: Optional[Dict[str, str]] = None,
     ):
         await self._load()
 
@@ -92,6 +144,11 @@ class PersistentConversationMemory:
         turns.append({"role": role, "content": content[:500]})
         if len(turns) > MAX_TURNS:
             turns = turns[-MAX_TURNS:]
+
+        # ادمج الـ slots الجديدة مع القديمة (من غير ما نمسح حاجة معروفة قبل كده)
+        merged_slots = dict(self._record.collected_slots or {})
+        if new_slots:
+            merged_slots.update({k: v for k, v in new_slots.items() if v})
 
         # حدث الـ state
         async with self.db_client() as session:
@@ -104,6 +161,7 @@ class PersistentConversationMemory:
                     current_crop=crop or self._record.current_crop,
                     last_topic=topic or self._record.last_topic,
                     last_problem=problem or self._record.last_problem,
+                    collected_slots=merged_slots,
                 )
             )
             await session.execute(stmt)
@@ -111,6 +169,7 @@ class PersistentConversationMemory:
 
         # حدث الـ cache
         self._record.turns = turns
+        self._record.collected_slots = merged_slots
         if crop:
             self._record.current_crop = crop
         if topic:

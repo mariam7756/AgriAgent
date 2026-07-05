@@ -346,6 +346,7 @@ class KnowledgeController(BaseController):
                         "answer": "\n".join(lines),
                         "sources": [{"name": crop, "topic": "fertilization", "confidence": 0.95}],
                         "mode": "ontology_plan",
+                        "is_final_answer": True,  # رقم دقيق من الـ ontology — يترجع زي ما هو من غير صياغة تانية
                         "plan": plan,
                         "flow": flow,
                     }
@@ -402,6 +403,7 @@ class KnowledgeController(BaseController):
             "answer": "\n\n".join(facts[:3]),
             "sources": sources,
             "mode": "knowledge_store_context",
+            "is_final_answer": False,  # ← ده سياق خام لازم يعدي على الـ LLM، مش رد نهائي
             "flow": flow,
         }
 
@@ -421,3 +423,4 @@ class KnowledgeController(BaseController):
     def _extract_area(self, text: str) -> float:
         match = re.search(r"(\d+(?:\.\d+)?)\s*فدان", text or "")
         return float(match.group(1)) if match else 1.0
+    
