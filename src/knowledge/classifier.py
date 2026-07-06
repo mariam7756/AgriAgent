@@ -1,4 +1,5 @@
 from typing import Optional
+import re
 
 from .schemas import MessageClassificationResult, MessageType
 from knowledge.ontology import AGRI_ONTOLOGY
@@ -18,6 +19,17 @@ AGRI_KEYWORDS = {
     "crop", "irrigation", "fertilizer", "pest", "disease", "harvest",
     "plant", "soil", "farm", "tree", "vegetable", "herb",
 } | ALL_CROP_NAMES
+
+
+def _contains_word(text: str, keyword: str) -> bool:
+    """مطابقة بحدود الكلمة (word boundary) بدل substring خام — لتجنب
+    false positives زي كلمة 'ري' (سقي) اللي كانت بتتطابق غلط جوه كلمة
+    'رياضية' لأنها substring منها. اتأكد من الباگ ده بالتجربة الفعلية."""
+    return bool(re.search(rf"\b{re.escape(keyword)}\b", text))
+
+
+def _contains_any_keyword(text: str, keywords) -> bool:
+    return any(_contains_word(text, kw) for kw in keywords)
 
 # خطة تسميد مطلوبة صراحة
 FERTILIZATION_PLAN_HINTS = {
@@ -82,7 +94,7 @@ class MessageClassifier:
             )
 
         # خطة تسميد مطلوبة صراحة → ontology
-        if any(h in normalized_lower for h in FERTILIZATION_PLAN_HINTS):
+        if _contains_any_keyword(normalized_lower, FERTILIZATION_PLAN_HINTS):
             return MessageClassificationResult(
                 message_type=MessageType.AGRICULTURE_QUESTION,
                 confidence=0.97,
@@ -92,7 +104,7 @@ class MessageClassifier:
             )
 
         # سؤال زراعي واضح → knowledge + RAG
-        if any(kw in normalized_lower for kw in AGRI_KEYWORDS):
+        if _contains_any_keyword(normalized_lower, AGRI_KEYWORDS):
             return MessageClassificationResult(
                 message_type=MessageType.AGRICULTURE_QUESTION,
                 confidence=0.88,
@@ -124,13 +136,18 @@ class MessageClassifier:
             intent_hint="chat",
         )
 
+    def detect_explicit_crop(self, text: str) -> Optional[str]:
+        """يرجع اسم المحصول لو مذكور صراحة في النص ده بس (من غير أي fallback
+        لمحصول قديم محفوظ) — يستخدم لتحديد لو المستخدم فعليًا غيّر الموضوع."""
+        return self._detect_crop((text or "").lower())
+
     def _detect_crop(self, text: str) -> Optional[str]:
         
         for crop_key, data in AGRI_ONTOLOGY.items():
-            if crop_key in text:
+            if _contains_word(text, crop_key):
                 return crop_key
             for ar_name in data.get("ar_names", []):
-                if ar_name in text:
+                if _contains_word(text, ar_name):
                     return crop_key
         return None
     

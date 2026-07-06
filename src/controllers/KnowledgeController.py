@@ -57,6 +57,44 @@ class KnowledgeController(BaseController):
         plan = get_fertilization_plan(crop_key=crop, area_feddan=area_feddan)
         return plan if plan.get("stages") else None
 
+    _STAGE_LABELS_AR = {
+        "pre_planting": "قبل الزراعة",
+        "tillering": "مرحلة التفريع",
+        "jointing": "مرحلة استطالة الساق",
+        "week_2": "الأسبوع الثاني",
+        "week_3": "الأسبوع الثالث",
+        "week_5": "الأسبوع الخامس",
+        "week_6": "الأسبوع السادس",
+        "flowering": "مرحلة التزهير",
+        "fruit_set": "مرحلة عقد الثمار",
+        "boll_formation": "مرحلة تكوّن اللوز",
+        "vegetative": "مرحلة النمو الخضري",
+        "month_2": "الشهر الثاني",
+        "month_5": "الشهر الخامس",
+    }
+
+    def build_fertilization_answer(self, crop: str, area_feddan: float = 1.0) -> Optional[Dict]:
+        """نسخة نظيفة بدون إعادة تصنيف — بتستقبل crop جاهز (من الـ
+        ConversationContext) بدل ما تعيد استدعاء classify_message تاني.
+        دي أداة حسابية دقيقة (Tool)، مش نص معرفة."""
+        plan = self.get_fertilization_plan_from_ontology(crop=crop, area_feddan=area_feddan)
+        if not plan:
+            return None
+        ar_name = AGRI_ONTOLOGY.get(crop, {}).get("ar_names", [crop])[0]
+        lines = [f"🌾 خطة تسميد {ar_name} لـ {area_feddan} فدان:\n"]
+        for stage in plan["stages"]:
+            # اسم المرحلة بالعربي — قبل كده كان بيترجع مفتاح إنجليزي خام
+            # (زي 'tillering:') يظهر للمستخدم زي ما هو، وده مش مقبول.
+            stage_label = self._STAGE_LABELS_AR.get(stage["stage"], stage["stage"])
+            lines.append(f"• {stage_label}: {stage['fertilizer']} — {stage['total_kg']} كجم")
+        lines.append("\nملاحظة: الجرعات للتربة الطمية — التربة الرملية تحتاج زيادة 15-20%.")
+        return {
+            "answer": "\n".join(lines),
+            "sources": [{"name": crop, "topic": "fertilization", "confidence": 0.95}],
+            "is_final_answer": True,
+            "plan": plan,
+        }
+
     
     # helpers
     
@@ -303,82 +341,22 @@ class KnowledgeController(BaseController):
             "files_included": include_files,
         }
         
-    async def answer_from_knowledge_store(
-        self,
-        project_id: int,
-        query: str,
-        current_crop: Optional[str] = None,
-        limit: int = 5,
+    async def fetch_knowledge_records_answer(
+        self, project_id: int, crop: Optional[str], topic: str, limit: int = 5,
     ) -> Optional[Dict]:
+        """نسخة نظيفة — بتستقبل crop/topic جاهزين (من ConversationContext)
+        بدل ما تعيد تصنيف الرسالة تاني. مفيش fallback بيرجع سجلات من محصول
+        تاني تحت نفس الـ topic (كان سبب خلط 'القمح' وقت الكلام عن 'النعناع')."""
         if self.db_client is None:
             return None
 
-        flow = self.classify_message(text=query, current_crop=current_crop)
-        message_type = flow["classification"]["message_type"]
-        route = flow["route"]
-
-        # general_chat → مش بنرد هنا، بنبعته للـ LLM في nlp.py
-        # الـ LLM هيرد بشكل طبيعي على التحية أو الكلام العادي
-        if message_type == "general_chat":
-            return None
-
-        # خطة تسميد من الـ ontology مباشرة
-        if route == "fertilization_plan":
-            crop = (
-                flow["classification"].get("detected_crop")
-                or self._detect_crop_from_query(query)
-            )
-            if crop:
-                area = self._extract_area(query)
-                plan = self.get_fertilization_plan_from_ontology(crop=crop, area_feddan=area)
-                if plan:
-                    ar_name = AGRI_ONTOLOGY.get(crop, {}).get("ar_names", [crop])[0]
-                    lines = [f"🌾 خطة تسميد {ar_name} لـ {area} فدان:\n"]
-                    for stage in plan["stages"]:
-                        lines.append(
-                            f"• {stage['stage']}: {stage['fertilizer']} — {stage['total_kg']} كجم"
-                        )
-                    lines.append(
-                        "\nملاحظة: الجرعات للتربة الطمية — التربة الرملية تحتاج زيادة 15-20%."
-                    )
-                    
-                    return {
-                        "answer": "\n".join(lines),
-                        "sources": [{"name": crop, "topic": "fertilization", "confidence": 0.95}],
-                        "mode": "ontology_plan",
-                        "is_final_answer": True,  # رقم دقيق من الـ ontology — يترجع زي ما هو من غير صياغة تانية
-                        "plan": plan,
-                        "flow": flow,
-                    }
-
-        # general_rag → اديه للـ RAG
-        if route == "general_rag":
-            return None
-
-        # دور في الـ knowledge store
-        crop = (
-            flow["classification"].get("detected_crop")
-            or self._detect_crop_from_query(query)
-            or current_crop
-        )
-        topic = flow["intent"].get("topic", "general")
-        
         knowledge_model = await KnowledgeModel.create_instance(db_client=self.db_client)
-        
-
         records = await knowledge_model.get_records(
             project_id=project_id, name=crop, topic=topic, limit=limit,
         )
-        
-        if not records:
-            records = await knowledge_model.get_records(
-                project_id=project_id, topic=topic, limit=limit,
-            )
-            
         if not records:
             return None
 
-        # نظف المحتوى — شيل الـ "سؤال: ... إجابة: ..." prefix
         def clean_content(text: str) -> str:
             if "إجابة:" in text:
                 return text.split("إجابة:")[-1].strip()
@@ -389,23 +367,62 @@ class KnowledgeController(BaseController):
 
         facts = [clean_content(rec.content or "")[:400] for rec in records if rec.content]
         sources = [
-            {
-                "record_id": rec.record_id,
-                "name": rec.name,
-                "topic": rec.topic,
-                "confidence": rec.confidence,
-            }
+            {"record_id": rec.record_id, "name": rec.name, "topic": rec.topic, "confidence": rec.confidence}
             for rec in records
         ]
-        
-
         return {
             "answer": "\n\n".join(facts[:3]),
             "sources": sources,
-            "mode": "knowledge_store_context",
-            "is_final_answer": False,  # ← ده سياق خام لازم يعدي على الـ LLM، مش رد نهائي
-            "flow": flow,
+            "is_final_answer": False,  # سياق خام لازم يعدي على الـ LLM، مش رد نهائي
         }
+
+    async def answer_from_knowledge_store(
+        self,
+        project_id: int,
+        query: str,
+        current_crop: Optional[str] = None,
+        limit: int = 5,
+    ) -> Optional[Dict]:
+        """
+        ⚠️ محفوظة للتوافق الخلفي بس — ConversationService بقى بيستخدم
+        build_fertilization_answer() و fetch_knowledge_records_answer()
+        مباشرة عن طريق OntologySource/KnowledgeStoreSource (بدون إعادة
+        تصنيف الرسالة من جديد، لأن الكلاسيفكيشن أصلاً محسوبة في الـ Context).
+        """
+        if self.db_client is None:
+            return None
+
+        flow = self.classify_message(text=query, current_crop=current_crop)
+        message_type = flow["classification"]["message_type"]
+        route = flow["route"]
+
+        if message_type == "general_chat":
+            return None
+
+        if route == "fertilization_plan":
+            crop = flow["classification"].get("detected_crop") or self._detect_crop_from_query(query)
+            if crop:
+                area = self._extract_area(query)
+                result = self.build_fertilization_answer(crop=crop, area_feddan=area)
+                if result:
+                    result["mode"] = "ontology_plan"
+                    result["flow"] = flow
+                    return result
+
+        if route == "general_rag":
+            return None
+
+        crop = (
+            flow["classification"].get("detected_crop")
+            or self._detect_crop_from_query(query)
+            or current_crop
+        )
+        topic = flow["intent"].get("topic", "general")
+        result = await self.fetch_knowledge_records_answer(project_id=project_id, crop=crop, topic=topic, limit=limit)
+        if result:
+            result["mode"] = "knowledge_store_context"
+            result["flow"] = flow
+        return result
 
     
     # Private helpers

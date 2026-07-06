@@ -6,7 +6,8 @@ from models.ChunkModel import ChunkModel
 from controllers import NLPController
 from controllers import KnowledgeController
 from models import ResponseSignal
-from knowledge.conversation_memory import get_memory
+from knowledge.conversation_memory import get_memory, clear_session
+from services.conversation.conversation_service import ConversationService
 
 
 import logging
@@ -197,75 +198,28 @@ async def search_index(request: Request, project_id: int, search_request: Search
         }
     )
 
+@nlp_router.post("/index/reset-session/{project_id}")
+async def reset_conversation_session(request: Request, project_id: int, search_request: SearchRequest):
+    """
+    يمسح جلسة محادثة محددة بالكامل (المحصول المحفوظ + الـ entities + التاريخ).
+    مهم قبل أي عرض/مناقشة: لو نفس session_id (أو الافتراضي project_{id}_default
+    لو الفرونت إند مبعتش session_id لسه) استُخدم في تجارب سابقة، محصول قديم
+    (زي "قمح") ممكن يفضل عالق ويظهر غلط في سؤال عن محصول تاني تمامًا.
+    body: {"text": "", "session_id": "<نفس الـ session المستخدمة في التطبيق>"}
+    """
+    session_key = search_request.session_id or f"project_{project_id}_default"
+    deleted = await clear_session(
+        db_client=request.app.db_client, session_key=session_key, project_id=project_id
+    )
+    return JSONResponse(content={"cleared": deleted, "session_key": session_key})
+
 @nlp_router.post("/index/answer/{project_id}")
 async def answer_rag(request: Request, project_id: int, search_request: SearchRequest):
 
     project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
-    # ── Persistent Conversation Memory ───────────────────────────────────
-    from knowledge.conversation_memory import get_memory, extract_slots_from_text
-    session_key = search_request.session_id or f"project_{project_id}_default"
-    memory = await get_memory(
-        db_client=request.app.db_client,
-        session_key=session_key,
-        project_id=project_id,
-    )
-    current_crop = (
-        search_request.current_crop
-        or await memory.get_current_crop()
-        or await memory.resolve_crop_from_context(search_request.text)
-    )
-    memory_state = await memory.get_state()
-
-    # استخرج أي تفاصيل ذكرها المستخدم عرضًا (مكان/شمس/تربة/ري) عشان مانسألوش عنها تاني
-    new_slots = extract_slots_from_text(search_request.text)
-
-    # ── Knowledge Store (ontology / fertilization / direct answers) ───────
     knowledge_controller = KnowledgeController(db_client=request.app.db_client)
-    knowledge_answer = await knowledge_controller.answer_from_knowledge_store(
-        project_id=project.project_id,
-        query=search_request.text,
-        current_crop=current_crop,
-        limit=min(search_request.limit or 3, 3),
-    )
-
-    # رد نهائي جاهز فعلاً (زي خطة التسميد الرقمية) — يترجع مباشرة من غير ما يعدي على الموديل
-    if knowledge_answer is not None and knowledge_answer.get("is_final_answer"):
-        detected_crop = (
-            knowledge_answer.get("flow", {})
-            .get("classification", {})
-            .get("detected_crop") or current_crop
-        )
-        await memory.add_turn(
-            role="user",
-            content=search_request.text,
-            crop=detected_crop,
-            topic=knowledge_answer.get("flow", {}).get("intent", {}).get("topic"),
-            new_slots=new_slots,
-        )
-        await memory.add_turn(role="assistant", content=knowledge_answer["answer"])
-
-        return JSONResponse(content={
-            "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-            "answer": knowledge_answer["answer"],
-            "sources": knowledge_answer.get("sources", []),
-            "flow": knowledge_answer.get("flow", {}),
-            "answer_mode": knowledge_answer.get("mode", "knowledge_store"),
-            "full_prompt": None,
-            "chat_history": [],
-            "session_state": await memory.to_dict(),
-        })
-
-    # سياق خام من الـ knowledge store (مش رد نهائي) — يتبعت للموديل يصيغه بدل ما يترجع زي ما هو،
-    # عشان نضمن صوت/شخصية ثابتة وردود مبنية على المحادثة مش فقرات جاهزة مكررة.
-    preloaded_context = (
-        knowledge_answer["answer"]
-        if knowledge_answer is not None and knowledge_answer.get("mode") == "knowledge_store_context"
-        else None
-    )
-
-    # ── RAG / LLM (مسار موحّد لكل الردود غير الرقمية) ─────────────────────
     nlp_controller = NLPController(
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
@@ -273,44 +227,34 @@ async def answer_rag(request: Request, project_id: int, search_request: SearchRe
         template_parser=request.app.template_parser,
     )
 
-    answer, full_prompt, chat_history, sources = await nlp_controller.answer_rag_question(
-        project=project,
-        query=search_request.text,
-        limit=min(search_request.limit or 3, 3),
-        current_crop=current_crop,
-        memory_state=memory_state,
-        preloaded_context=preloaded_context,
+    conversation_service = ConversationService(
+        db_client=request.app.db_client,
+        knowledge_controller=knowledge_controller,
+        nlp_controller=nlp_controller,
+        template_parser=request.app.template_parser,
     )
 
-    if not answer:
+    result = await conversation_service.handle_message(
+        project=project,
+        project_id=project_id,
+        session_id=search_request.session_id,
+        text=search_request.text,
+        current_crop_hint=search_request.current_crop,
+    )
+
+    if not result.get("answer"):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"signal": ResponseSignal.RAG_ANSWER_ERROR.value},
         )
+        
 
-    detected_crop = None
-    if knowledge_answer is not None:
-        detected_crop = (
-            knowledge_answer.get("flow", {})
-            .get("classification", {})
-            .get("detected_crop")
-        )
-
-    await memory.add_turn(
-        role="user",
-        content=search_request.text,
-        crop=detected_crop or current_crop,
-        new_slots=new_slots,
-    )
-    await memory.add_turn(role="assistant", content=answer)
 
     return JSONResponse(content={
         "signal": ResponseSignal.RAG_ANSWER_SUCCESS.value,
-        "answer": answer,
-        "sources": sources,
-        "answer_mode": "rag" if not preloaded_context else "knowledge_store_via_llm",
-        "full_prompt": full_prompt,
-        "chat_history": chat_history,
-        "session_state": await memory.to_dict(),
+        "answer": result["answer"],
+        "sources": result.get("sources", []),
+        "answer_mode": result.get("policy_decision"),
+        "session_state": result.get("session_state"),
     })
     

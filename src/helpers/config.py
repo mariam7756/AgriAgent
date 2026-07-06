@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     
 
     # Database
-    POSTGRES_USER: str
+    POSTGRES_USERNAME: str
     POSTGRES_PASSWORD: str
     POSTGRES_HOST: str
     POSTGRES_PORT: int

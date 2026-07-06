@@ -133,6 +133,17 @@ AGRI_ONTOLOGY: Dict[str, Dict] = {
         },
         "irrigation_days": 1, "planting_months": [3, 4, 9, 10],
     },
+    "basil": {
+        "ar_names": ["ريحان", "الريحان"],
+        "season": ["summer"], "egypt_regions": ["all"],
+        "diseases": ["fusarium_wilt", "downy_mildew", "root_rot"],
+        "pests": ["aphid", "whitefly", "spider_mite"],
+        "fertilization": {
+            "pre_planting": {"name": "سماد عضوي (كمبوست)", "dose_kg_feddan": 1500},
+            "vegetative":   {"name": "يوريا",               "dose_kg_feddan": 20},
+        },
+        "irrigation_days": 2, "planting_months": [3, 4, 5],
+    },
 }
 
 

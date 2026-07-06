@@ -58,6 +58,5 @@ class QueryIntentResult(BaseModel):
     pest: Optional[str] = None
     topic: Optional[str] = None
     needs_memory: bool = False
-    
+    # "how_to" (إزاي أزرع/أعالج) | "informational" (عايز أعرف عن) | None (غير محدد)
     style: Optional[str] = None
-    

@@ -6,6 +6,7 @@ from helpers.retrieval import rerank_documents, build_source_citation
 from typing import List, Optional
 from knowledge.classifier import MessageClassifier
 from knowledge.router import KnowledgeRouter
+from services.conversation.active_entity_scope import ActiveEntityScope
 import re
 import json
 
@@ -91,15 +92,17 @@ class NLPController(BaseController):
 
         return bool(inserted)
 
-    async def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
-        
-        
+    async def search_vector_db_collection(self, project: Project, text: str, limit: int = 10, current_crop: Optional[str] = None):
+
         collection_name = self.create_collection_name(project_id=project.project_id)
 
-        
-        
+        # لو المحصول الحالي معروف، نضمّه في نص البحث نفسه — عشان الـ embedding
+        # يبقى مقيّد بالمحصول ده، مش نص عام ممكن يطابق أي محصول تاني (السبب
+        # المباشر في مشكلة رجوع معلومات عن القمح وقت الكلام عن النعناع).
+        search_text = f"{current_crop} {text}" if current_crop else text
+
         vectors = self.embedding_client.embed_text(
-            text=text,
+            text=search_text,
             document_type=DocumentTypeEnum.QUERY.value,
         )
 
@@ -144,9 +147,16 @@ class NLPController(BaseController):
             limit=limit,
         )
     
-    def _is_context_relevant(self, query: str, docs: list, min_score: float = 0.35) -> bool:
+    def _is_context_relevant(self, query: str, docs: list, current_crop: Optional[str] = None, min_score: float = 0.35) -> bool:
         if not docs:
             return False
+
+        # فلتر موحّد (Active Entity Scope) بدل شرط inline كان مكرر هنا ومرة
+        # تانية في KnowledgeController بمنطق مختلف — دلوقتي مصدر واحد للحقيقة.
+        scope = ActiveEntityScope(current_crop)
+        if not scope.matches([d.text for d in docs]):
+            return False
+
         top_score = max((getattr(d, "score", 0) or 0) for d in docs)
         if top_score < min_score:
             return False
@@ -173,9 +183,12 @@ class NLPController(BaseController):
             return "لسه مفيش معلومات معروفة عن المستخدم — دي أول حاجة هتعرفها منه."
 
         parts = []
+        if collected_slots.get("user_name"):
+            parts.append(f"اسم المستخدم: {collected_slots['user_name']}")
         if current_crop:
             parts.append(f"المحصول: {current_crop}")
         label_map = {
+            "governorate": "المحافظة",
             "location": "مكان الزراعة",
             "sun_exposure": "التعرض للشمس",
             "watering_frequency": "تكرار الري",
@@ -202,6 +215,13 @@ class NLPController(BaseController):
         memory_state: Optional[dict] = None,
         preloaded_context: Optional[str] = None,
     ):
+        """
+        ⚠️ DEPRECATED — مش بتستخدم من ConversationService تاني (كانت بتعمل
+        classify/prompt/generate/sanitize مكررة مع services/conversation/*).
+        ConversationService دلوقتي بيستخدم search_vector_db_collection() و
+        _is_context_relevant() مباشرة عن طريق VectorSource. الميثود دي متسيبة
+        هنا للتوافق الخلفي بس، مفيش استدعاء ليها في الكود الحالي.
+        """
         answer, context_text, chat_history, sources = None, None, None, []
 
         memory_state = memory_state or {}
@@ -231,6 +251,7 @@ class NLPController(BaseController):
                 project=project,
                 text=query,
                 limit=limit,
+                current_crop=current_crop,
             )
 
             NOISE = {"تنزيل الكتاب", "تحميل الكتاب", "download", "اضغط هنا", "-----"}
@@ -254,10 +275,11 @@ class NLPController(BaseController):
 
             context_text = "\n---\n".join(context_blocks)
 
-            # تأكد إن الـ context ذي صلة بالسؤال
-            if context_blocks and self._is_context_relevant(query, retrieved_documents or []):
+            # تأكد إن الـ context ذي صلة بالسؤال (ومطابق للمحصول الحالي لو معروف)
+            if context_blocks and self._is_context_relevant(query, retrieved_documents or [], current_crop=current_crop):
                 clean_context = context_text
-            # لو الـ context مش ذي صلة — خليه يجاوب من خبرته
+            # لو الـ context مش ذي صلة أو بيتكلم عن محصول تاني — خليه يجاوب من خبرته
+            # العامة بدل ما يستخدم معلومة غلط عن محصول مختلف.
 
         # ── System prompt: نمرر حالة المحادثة كمتغيرات فعلية بدل placeholders فاضية ──
         greeting_rule = (
